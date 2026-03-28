@@ -38,9 +38,9 @@ class SlideIngredients(BaseModel):
 class Slide(BaseModel):
     """A single presentation slide."""
 
-    id: str = Field(..., description="Unique slide identifier, e.g. slide_001")
-    type: SlideType = Field(..., description="Layout type of the slide")
-    title: str = Field(..., description="Slide title")
+    id: str = Field(default="slide_000", description="Unique slide identifier, e.g. slide_001")
+    type: str = Field(default="concept", description="Layout type of the slide")
+    title: str = Field(default="", description="Slide title")
     body: List[str] = Field(default_factory=list, description="Bullet points / body text")
     media: List[str] = Field(default_factory=list, description="Media asset references")
     speaker_notes: str = Field(default="", description="Notes for the presenter")
