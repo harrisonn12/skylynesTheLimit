@@ -6,7 +6,7 @@ import { Chat } from "@/components/chat";
 import { useState, useCallback } from "react";
 import { type Slide } from "@/lib/mockSlides";
 import { threadMessagesForGenerate } from "@/lib/threadMessagesForGenerate";
-import SlidePreview from "@/components/slides/SlidePreview";
+import SlideGraphView from "@/components/slides/SlideGraphView";
 import PresentMode from "@/components/present/PresentMode";
 
 type AppView = "chat" | "loading" | "slides";
@@ -200,8 +200,8 @@ function HomeContent() {
                       Your Presentation
                     </h2>
                     <p className="text-zinc-400 mt-1 text-sm">
-                      {slides.length} slides generated • Click a slide to
-                      preview
+                      {slides.length} slides • Graph shows trigger-word paths;
+                      click a node to preview
                     </p>
                   </div>
                   <button
@@ -225,7 +225,7 @@ function HomeContent() {
                   </button>
                 </div>
                 <div className="stagger-children">
-                  <SlidePreview
+                  <SlideGraphView
                     slides={slides}
                     onPresentFromSlide={handlePresent}
                   />
