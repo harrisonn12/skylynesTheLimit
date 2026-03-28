@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+railtracks
+openai
+python-dotenv
