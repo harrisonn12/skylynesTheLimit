@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Chat",
-  description: "AI Agent Chat Interface",
+  title: "SlideForge — AI Presentation Builder",
+  description: "Turn conversations into stunning presentations with AI",
 };
 
 export default function RootLayout({
