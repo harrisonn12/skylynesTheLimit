@@ -10,7 +10,7 @@ from models.slides import Slide, SlideType
 
 logger = logging.getLogger(__name__)
 
-SLIDE_GENERATION_PROMPT = """You are SlideForge, an AI presentation generator. Given the user's content, create a compelling presentation.
+SLIDE_GENERATION_PROMPT = """You are Deckless, an AI presentation generator. Given the user's content, create a compelling presentation.
 
 Generate 5-8 presentation slides and return them as a JSON object with a "slides" key.
 
@@ -101,7 +101,7 @@ async def generate_slides_with_llm(user_content: Union[str, list]) -> List[dict]
     return validated
 
 
-REFINE_EXPAND_PROMPT = """You are SlideForge. You receive a full presentation as JSON (a "slides" array) and a target slide index.
+REFINE_EXPAND_PROMPT = """You are Deckless. You receive a full presentation as JSON (a "slides" array) and a target slide index.
 
 Task — EXPAND: Insert exactly 2 new slides immediately AFTER the slide at slide_index. The new slides must cover distinct related subtopics that branch from that slide (wider coverage, adjacent angles the audience expects next). Do not remove or duplicate existing slides.
 
@@ -114,7 +114,7 @@ Rules:
 """
 
 
-REFINE_DEEPEN_PROMPT = """You are SlideForge. You receive a full presentation as JSON (a "slides" array) and a target slide index.
+REFINE_DEEPEN_PROMPT = """You are Deckless. You receive a full presentation as JSON (a "slides" array) and a target slide index.
 
 Task — DEEPEN: Enrich ONLY the slide at slide_index. Add substantive detail: more specific bullets (up to 6 body lines total), clearer speaker_notes with examples or caveats, and refined trigger_words if needed. You may slightly sharpen the title if it helps clarity. All other slides must be unchanged (same order, same ids, same content).
 

@@ -13,7 +13,7 @@ from thread_context import compile_messages_for_live_qa
 router = APIRouter()
 
 SYSTEM = (
-    "You are SlideForge live Q&A. Answer clearly for a spoken presentation: short "
+    "You are Deckless live Q&A. Answer clearly for a spoken presentation: short "
     "paragraphs, no markdown headings. Ground every claim in the knowledge base; "
     "if it is not there, say so honestly."
 )

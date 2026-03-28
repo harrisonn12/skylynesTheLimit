@@ -91,7 +91,7 @@ def generate_real_response(openai_messages: list[dict]):
             {
                 "role": "system",
                 "content": (
-                    "You are SlideForge, an AI presentation assistant.\n\n"
+                    "You are Deckless, an AI presentation assistant.\n\n"
                     "When the user describes a slide deck, topic, or presentation idea, walk "
                     "them through clarifications in a natural back-and-forth. Each reply "
                     "should ask only a few focused questions at a time (for example: "

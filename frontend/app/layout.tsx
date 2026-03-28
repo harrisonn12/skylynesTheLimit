@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SlideForge — AI Presentation Builder",
+  title: "Deckless — AI Presentation Builder",
   description: "Turn conversations into stunning presentations with AI",
 };
 

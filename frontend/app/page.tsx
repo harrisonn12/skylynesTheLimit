@@ -128,7 +128,7 @@ function HomeContent() {
               </svg>
             </div>
             <h1 className="text-lg font-bold text-zinc-100 tracking-tight">
-              SlideForge
+              Deckless
             </h1>
             <span className="text-[10px] font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">
               AI
