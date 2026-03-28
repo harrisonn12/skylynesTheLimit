@@ -12,6 +12,7 @@ from openai import OpenAI
 
 from routes.generate import router as generate_router
 from routes.export import router as export_router
+from routes.refine_slide import router as refine_slide_router
 from thread_context import mock_user_preview, raw_message_to_openai
 
 logging.basicConfig(level=logging.DEBUG)
@@ -23,6 +24,7 @@ app = FastAPI(title="Agent Backend")
 
 app.include_router(generate_router)
 app.include_router(export_router)
+app.include_router(refine_slide_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -291,6 +291,9 @@ function HomeContent() {
                     slides={slides}
                     onPresentFromSlide={handlePresent}
                     onEditSlide={handleEditSlide}
+                    onSlidesChange={setSlides}
+                    onRefineError={setError}
+                    onRefineSuccess={() => setError(null)}
                   />
                 </div>
               </div>

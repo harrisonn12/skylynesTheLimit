@@ -99,3 +99,81 @@ async def generate_slides_with_llm(user_content: Union[str, list]) -> List[dict]
 
     logger.info(f"Validated {len(validated)} slides out of {len(slides_data)}")
     return validated
+
+
+REFINE_EXPAND_PROMPT = """You are SlideForge. You receive a full presentation as JSON (a "slides" array) and a target slide index.
+
+Task — EXPAND: Insert exactly 2 new slides immediately AFTER the slide at slide_index. The new slides must cover distinct related subtopics that branch from that slide (wider coverage, adjacent angles the audience expects next). Do not remove or duplicate existing slides.
+
+Rules:
+- Return ONLY valid JSON: {"slides": [...]} with the COMPLETE updated array in presentation order.
+- New slides need unique "id" values (e.g. slide_branch_01).
+- Valid "type" values: "title", "concept", "comparison", "timeline", "evidence", "conclusion"
+- Each new slide: 2-4 body bullets, speaker_notes, 2-3 trigger_words
+- If the deck ends with type "conclusion", keep that slide as the very last slide after your insertions (shift it after the new slides if needed).
+"""
+
+
+REFINE_DEEPEN_PROMPT = """You are SlideForge. You receive a full presentation as JSON (a "slides" array) and a target slide index.
+
+Task — DEEPEN: Enrich ONLY the slide at slide_index. Add substantive detail: more specific bullets (up to 6 body lines total), clearer speaker_notes with examples or caveats, and refined trigger_words if needed. You may slightly sharpen the title if it helps clarity. All other slides must be unchanged (same order, same ids, same content).
+
+Rules:
+- Return ONLY valid JSON: {"slides": [...]} with the COMPLETE array.
+- Do not insert or remove slides.
+"""
+
+
+async def refine_slide_deck_with_llm(
+    slides: List[dict], slide_index: int, mode: str
+) -> List[dict]:
+    """Return full deck after expand or deepen via LLM."""
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    system = REFINE_EXPAND_PROMPT if mode == "expand" else REFINE_DEEPEN_PROMPT
+    user_payload = json.dumps(
+        {"slides": slides, "slide_index": slide_index, "mode": mode},
+        ensure_ascii=False,
+    )
+
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_payload},
+        ],
+        temperature=0.6,
+        response_format={"type": "json_object"},
+    )
+
+    result_text = response.choices[0].message.content or "{}"
+    parsed = json.loads(result_text)
+
+    if isinstance(parsed, dict):
+        slides_data = None
+        for key in ["slides", "presentation", "data", "results"]:
+            if key in parsed:
+                slides_data = parsed[key]
+                break
+        if slides_data is None:
+            for _key, value in parsed.items():
+                if isinstance(value, list):
+                    slides_data = value
+                    break
+            else:
+                slides_data = []
+    elif isinstance(parsed, list):
+        slides_data = parsed
+    else:
+        slides_data = []
+
+    validated: List[dict] = []
+    for i, s in enumerate(slides_data):
+        try:
+            slide = Slide(**s)
+            validated.append(slide.model_dump())
+        except Exception as e:
+            logger.warning(f"Refine slide {i} validation failed: {e} — raw: {s}")
+
+    return validated

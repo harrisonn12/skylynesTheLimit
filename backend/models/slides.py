@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -73,5 +73,22 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     """Response body for the /api/generate endpoint."""
+
+    slides: List[Slide]
+
+
+class RefineSlideRequest(BaseModel):
+    """Request to expand or deepen one slide within an existing deck."""
+
+    slides: List[Slide]
+    slide_index: int = Field(..., ge=0, description="0-based index of the slide to refine")
+    mode: Literal["expand", "deepen"] = Field(
+        ...,
+        description="expand: insert related slides after this one; deepen: enrich this slide in place",
+    )
+
+
+class RefineSlideResponse(BaseModel):
+    """Full deck after refine (same shape as generate)."""
 
     slides: List[Slide]

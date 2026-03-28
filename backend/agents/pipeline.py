@@ -5,9 +5,11 @@ from __future__ import annotations
 # Railtracks framework integration (used for agent orchestration)
 import railtracks as rt  # noqa: F401 — sponsor tool
 
+import copy
 import json
 import logging
 import os
+import uuid
 from typing import List, Union
 
 from dotenv import load_dotenv
@@ -185,3 +187,91 @@ async def run_pipeline(user_content: Union[str, list]) -> List[dict]:
         slides = [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
     return slides
+
+
+def _refine_slide_deck_mock(slides: List[dict], slide_index: int, mode: str) -> List[dict]:
+    """Deterministic expand/deepen when no API key (for local dev)."""
+    out = [copy.deepcopy(s) for s in slides]
+    if slide_index < 0 or slide_index >= len(out):
+        return [Slide(**s).model_dump() for s in out]
+
+    if mode == "deepen":
+        s = out[slide_index]
+        body = list(s.get("body") or [])
+        body.extend(
+            [
+                "Deeper angle: connect this point to a concrete stakeholder outcome.",
+                "Nuance: name one limitation and how to mitigate it.",
+            ]
+        )
+        s["body"] = body[:8]
+        notes = (s.get("speaker_notes") or "").strip()
+        s["speaker_notes"] = (
+            f"{notes} Add a short example or statistic to land this slide."
+            if notes
+            else "Add a short example or statistic to land this slide."
+        )
+    elif mode == "expand":
+        base_title = out[slide_index].get("title") or "Topic"
+        insert_at = slide_index + 1
+        branch_a = {
+            "id": f"slide_{uuid.uuid4().hex[:10]}",
+            "type": "concept",
+            "title": f"Related angle: {base_title}",
+            "body": [
+                "Explores a sibling subtopic that audiences often ask about next.",
+                "Keeps the narrative wide while staying on-theme.",
+            ],
+            "media": [],
+            "speaker_notes": "Use this slide to branch the discussion without losing the main thread.",
+            "trigger_words": ["related", "branch", "context"],
+        }
+        branch_b = {
+            "id": f"slide_{uuid.uuid4().hex[:10]}",
+            "type": "evidence",
+            "title": f"Supporting context: {base_title}",
+            "body": [
+                "One credible datapoint or precedent that supports the previous slide.",
+                "Implication for decisions the audience might make.",
+            ],
+            "media": [],
+            "speaker_notes": "Cite a source verbally even if it is not on the slide.",
+            "trigger_words": ["evidence", "context", "support"],
+        }
+        out.insert(insert_at, branch_a)
+        out.insert(insert_at + 1, branch_b)
+    else:
+        return [Slide(**s).model_dump() for s in out]
+
+    return [Slide(**s).model_dump() for s in out]
+
+
+async def refine_slide_deck(slides: List[dict], slide_index: int, mode: str) -> List[dict]:
+    """Expand or deepen one slide; returns full deck."""
+    if slide_index < 0 or slide_index >= len(slides):
+        return [Slide(**s).model_dump() for s in slides]
+
+    if _is_mock_mode():
+        return _refine_slide_deck_mock(slides, slide_index, mode)
+
+    from agents.orchestrator import refine_slide_deck_with_llm
+
+    try:
+        refined = await refine_slide_deck_with_llm(slides, slide_index, mode)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"LLM slide refine failed: {e}")
+        refined = []
+
+    if not refined:
+        logging.getLogger(__name__).warning("Refine returned empty; using mock refine")
+        return _refine_slide_deck_mock(slides, slide_index, mode)
+
+    if mode == "deepen" and len(refined) != len(slides):
+        logging.getLogger(__name__).warning("Deepen changed slide count; falling back to mock deepen")
+        return _refine_slide_deck_mock(slides, slide_index, mode)
+
+    if mode == "expand" and len(refined) <= len(slides):
+        logging.getLogger(__name__).warning("Expand did not add slides; falling back to mock expand")
+        return _refine_slide_deck_mock(slides, slide_index, mode)
+
+    return refined

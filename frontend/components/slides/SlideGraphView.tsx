@@ -10,10 +10,16 @@ import {
   type TriggerGraphEdge,
 } from '@/lib/slideTriggerGraph';
 
+export type RefineSlideMode = 'expand' | 'deepen';
+
 interface SlideGraphViewProps {
   slides: Slide[];
   onPresentFromSlide?: (index: number) => void;
   onEditSlide?: (index: number, patch: Partial<Slide>) => void;
+  /** When set, shows expand/deepen actions that replace the deck via the API. */
+  onSlidesChange?: (slides: Slide[]) => void;
+  onRefineError?: (message: string) => void;
+  onRefineSuccess?: () => void;
 }
 
 function edgePath(
@@ -74,12 +80,55 @@ export default function SlideGraphView({
   slides,
   onPresentFromSlide,
   onEditSlide,
+  onSlidesChange,
+  onRefineError,
+  onRefineSuccess,
 }: SlideGraphViewProps) {
   const markerId = useId().replace(/:/g, '');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState<string[]>([]);
+  const [refining, setRefining] = useState<RefineSlideMode | null>(null);
+
+  async function runRefine(mode: RefineSlideMode) {
+    if (selectedIndex === null || !onSlidesChange) return;
+    setRefining(mode);
+    try {
+      const res = await fetch('/api/refine-slide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slides,
+          slide_index: selectedIndex,
+          mode,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail =
+          typeof data.details === 'string' && data.details.trim()
+            ? data.details.trim()
+            : null;
+        const msg =
+          typeof data.error === 'string' && data.error.trim()
+            ? data.error.trim()
+            : `Request failed (${res.status})`;
+        throw new Error(detail ? `${msg}: ${detail}` : msg);
+      }
+      if (!Array.isArray(data.slides)) {
+        throw new Error('Invalid response: missing slides');
+      }
+      onSlidesChange(data.slides as Slide[]);
+      onRefineSuccess?.();
+    } catch (e) {
+      onRefineError?.(
+        e instanceof Error ? e.message : 'Could not update slides.'
+      );
+    } finally {
+      setRefining(null);
+    }
+  }
 
   const positions = useMemo(() => layoutSlideNodes(slides.length), [slides.length]);
   const edges = useMemo(() => buildTriggerGraphEdges(slides), [slides]);
@@ -114,37 +163,65 @@ export default function SlideGraphView({
     <div className="flex flex-col gap-6">
       {selectedIndex !== null && (
         <div className="relative z-20">
-          <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-sm text-zinc-400">
-              Slide {selectedIndex + 1} of {slides.length} — {slides[selectedIndex].type}
-            </span>
-            <div className="flex items-center gap-2">
-              {onEditSlide && !editMode && (
-                <button
-                  type="button"
-                  onClick={() => openEdit(selectedIndex)}
-                  className="text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-3 py-1 rounded-lg transition-all"
-                >
-                  Edit
-                </button>
-              )}
+          <button
+            type="button"
+            onClick={() => setSelectedIndex(null)}
+            className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-black/80 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm transition-colors"
+          >
+            ✕
+          </button>
+          <SlideRenderer
+            slide={slides[selectedIndex]}
+            className="w-full rounded-xl border border-white/10 shadow-2xl"
+          />
+          <div className="flex flex-col gap-3 mt-3 px-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-sm text-gray-400">
+                Slide {selectedIndex + 1} of {slides.length} —{' '}
+                {slides[selectedIndex].type}
+              </span>
               {onPresentFromSlide && (
                 <button
                   type="button"
                   onClick={() => onPresentFromSlide(selectedIndex)}
-                  className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors"
+                  className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors shrink-0"
                 >
                   Present from here
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => { setSelectedIndex(null); setEditMode(false); }}
-                className="bg-black/60 hover:bg-black/80 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm transition-colors"
-              >
-                ✕
-              </button>
             </div>
+            {onSlidesChange && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={refining !== null}
+                  onClick={() => runRefine('expand')}
+                  className="text-left rounded-xl border border-emerald-500/35 bg-emerald-950/40 hover:bg-emerald-900/50 disabled:opacity-50 disabled:pointer-events-none px-3 py-2.5 transition-colors"
+                >
+                  <span className="block text-sm font-semibold text-emerald-200">
+                    {refining === 'expand' ? 'Expanding…' : 'Expand the topic'}
+                  </span>
+                  <span className="mt-1 block text-xs text-emerald-200/70 leading-snug">
+                    Inserts new slides after this one for related subtopics—widens
+                    the deck so the graph gains branch nodes.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={refining !== null}
+                  onClick={() => runRefine('deepen')}
+                  className="text-left rounded-xl border border-sky-500/35 bg-sky-950/40 hover:bg-sky-900/50 disabled:opacity-50 disabled:pointer-events-none px-3 py-2.5 transition-colors"
+                >
+                  <span className="block text-sm font-semibold text-sky-200">
+                    {refining === 'deepen' ? 'Deepening…' : 'Deepen this slide'}
+                  </span>
+                  <span className="mt-1 block text-xs text-sky-200/70 leading-snug">
+                    Enriches this slide only—more bullets, examples, and speaker
+                    notes—without adding new graph nodes.
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
 
           {editMode ? (
