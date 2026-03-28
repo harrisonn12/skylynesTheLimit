@@ -186,7 +186,15 @@ function HomeContent() {
         {/* Main content */}
         <main className="flex-1 overflow-hidden">
           {view === "chat" && (
-            <Chat onMessagesChange={setHasMessages} />
+            <Chat
+              onMessagesChange={setHasMessages}
+              slides={slides}
+              hasThreadMessages={hasMessages}
+              onOpenSlideIndex={(index) => {
+                setPresentFromIndex(index);
+                setView("slides");
+              }}
+            />
           )}
 
           {view === "loading" && <LoadingView />}
