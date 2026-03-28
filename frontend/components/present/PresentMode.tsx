@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { type Slide } from '@/lib/mockSlides';
 import SlideRenderer from '../slides/SlideRenderer';
+import VoiceController from './VoiceController';
+import { useVoiceNavigation } from '@/hooks/useVoiceNavigation';
 
 interface PresentModeProps {
   slides: Slide[];
@@ -16,6 +18,10 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
   const [showNotes, setShowNotes] = useState(false);
   const [direction, setDirection] = useState<'left' | 'right' | null>(null);
   const [animating, setAnimating] = useState(false);
+  const [matchedWord, setMatchedWord] = useState<string | null>(null);
+  const matchKeyRef = useRef(0);
+
+  const { isListening, transcript, startListening, stopListening, supported } = useVoiceNavigation();
 
   const total = slides.length;
   const currentSlide = slides[currentIndex];
@@ -37,16 +43,28 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
   const goNext = useCallback(() => goTo(currentIndex + 1, 'left'), [currentIndex, goTo]);
   const goPrev = useCallback(() => goTo(currentIndex - 1, 'right'), [currentIndex, goTo]);
 
+  const goToSlide = useCallback(
+    (index: number) => {
+      if (index === currentIndex || index < 0 || index >= total) return;
+      goTo(index, index > currentIndex ? 'left' : 'right');
+    },
+    [currentIndex, total, goTo],
+  );
+
   const exitPresent = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setIsActive(false);
+    stopListening();
     onExit?.();
-  }, [onExit]);
+  }, [onExit, stopListening]);
 
   const enterPresent = useCallback(() => {
     setIsActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
-  }, []);
+    if (supported) {
+      startListening();
+    }
+  }, [supported, startListening]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -72,17 +90,57 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
     return () => window.removeEventListener('keydown', handler);
   }, [isActive, goNext, goPrev, exitPresent]);
 
+  // Voice command processing
+  useEffect(() => {
+    if (!isActive || !transcript) return;
+
+    const text = transcript.toLowerCase().trim();
+
+    // Navigation commands
+    if (/\b(next|next slide)\b/.test(text)) {
+      goNext();
+      return;
+    }
+    if (/\b(back|previous|go back|previous slide)\b/.test(text)) {
+      goPrev();
+      return;
+    }
+    if (/\b(first slide|go to start|first)\b/.test(text)) {
+      goToSlide(0);
+      return;
+    }
+    if (/\b(last slide|go to end|last)\b/.test(text)) {
+      goToSlide(total - 1);
+      return;
+    }
+
+    // Trigger word matching — check all slides
+    for (let i = 0; i < slides.length; i++) {
+      const slide = slides[i];
+      for (const trigger of slide.trigger_words) {
+        if (text.includes(trigger.toLowerCase())) {
+          goToSlide(i);
+          matchKeyRef.current += 1;
+          setMatchedWord(trigger);
+          return;
+        }
+      }
+    }
+  }, [transcript, isActive, goNext, goPrev, goToSlide, slides, total]);
+
+  // Stop listening when exiting via fullscreen change
   // Listen for fullscreen exit
   useEffect(() => {
     const handler = () => {
       if (!document.fullscreenElement && isActive) {
         setIsActive(false);
+        stopListening();
         onExit?.();
       }
     };
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
-  }, [isActive, onExit]);
+  }, [isActive, onExit, stopListening]);
 
   if (!isActive) {
     return (
@@ -107,6 +165,14 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
 
   return (
     <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col" onClick={goNext}>
+      {/* Voice control overlay */}
+      <VoiceController
+        isListening={isListening}
+        transcript={transcript}
+        matchedWord={matchedWord}
+        key={matchKeyRef.current}
+      />
+
       {/* Slide area */}
       <div className="flex-1 flex items-center justify-center overflow-hidden">
         <div className={`w-full h-full transition-all duration-300 ease-out ${slideTransform}`}>

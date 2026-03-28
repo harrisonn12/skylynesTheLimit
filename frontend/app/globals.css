@@ -17,3 +17,33 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/* Voice controller animations */
+@keyframes voice-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes trigger-match {
+  0% { opacity: 0; transform: scale(0.9) translateY(-4px); }
+  50% { transform: scale(1.05) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-voice-bar {
+  animation: voice-bar 0.8s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+.animate-trigger-match {
+  animation: trigger-match 0.4s ease-out forwards;
+}
