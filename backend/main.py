@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -12,6 +13,9 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from routes.generate import router as generate_router
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -128,19 +132,54 @@ def generate_real_response(messages: list[Message]):
     yield "data: [DONE]\n\n"
 
 
+def extract_text_from_message(m: dict) -> str:
+    """Extract text content from an AI SDK message.
+
+    Handles multiple formats:
+    - Format A (string): {"role": "user", "content": "hello"}
+    - Format B (content parts): {"role": "user", "content": [{"type": "text", "text": "hello"}]}
+    - Format C (parts field): {"role": "user", "parts": [{"type": "text", "text": "hello"}], "content": ""}
+    """
+    # First try the 'parts' field (AI SDK v6 / assistant-ui format)
+    parts = m.get("parts")
+    if parts and isinstance(parts, list):
+        texts = []
+        for part in parts:
+            if isinstance(part, dict) and part.get("type") == "text":
+                texts.append(part.get("text", ""))
+        if texts:
+            return " ".join(texts)
+
+    # Then try 'content'
+    content = m.get("content", "")
+
+    # content as array of part objects (Format B)
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if isinstance(part, dict):
+                texts.append(part.get("text", ""))
+        result = " ".join(texts)
+        if result.strip():
+            return result
+
+    # content as plain string (Format A)
+    if isinstance(content, str) and content.strip():
+        return content
+
+    return str(content)
+
+
 @app.post("/api/chat")
 async def chat(request: FastAPIRequest):
     body = await request.json()
+    logger.debug(f"Raw request body: {json.dumps(body, indent=2)}")
     messages_raw = body.get("messages", [])
     messages = []
     for m in messages_raw:
-        content = m.get("content", "")
-        # AI SDK can send content as array of objects
-        if isinstance(content, list):
-            content = " ".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
-        messages.append(Message(role=m.get("role", "user"), content=str(content)))
+        text = extract_text_from_message(m)
+        logger.debug(f"Parsed message: role={m.get('role')}, content={text!r}")
+        messages.append(Message(role=m.get("role", "user"), content=text))
 
     if os.environ.get("OPENAI_API_KEY"):
         generator = generate_real_response(messages)
