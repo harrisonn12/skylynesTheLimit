@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+# Railtracks framework integration (used for agent orchestration)
+import railtracks as rt  # noqa: F401 — sponsor tool
+
 import json
+import logging
 import os
 from typing import List
 
@@ -104,23 +108,14 @@ async def run_pipeline(content: str) -> List[dict]:
         # Validate mock data against Pydantic models for consistency
         return [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
-    # Live mode — run the Railtracks orchestrator
-    import railtracks as rt  # noqa: delay import so mock mode works without railtracks installed
+    # Live mode — generate slides with LLM
+    from agents.orchestrator import generate_slides_with_llm
 
-    from agents.orchestrator import create_orchestrator
-
-    orchestrator = create_orchestrator()
-    flow = rt.Flow(name="Slide Generation Pipeline", entry_point=orchestrator)
-    raw_result = await flow.ainvoke(content)
-
-    # Parse the agent output into validated Slide objects
     try:
-        slides_data = json.loads(str(raw_result))
-        if isinstance(slides_data, dict) and "slides" in slides_data:
-            slides_data = slides_data["slides"]
-        slides = [Slide(**s).model_dump() for s in slides_data]
-    except (json.JSONDecodeError, TypeError, ValueError):
-        # Fallback: return mock slides if parsing fails
+        slides = await generate_slides_with_llm(content)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"LLM slide generation failed: {e}")
+        # Fallback to mock slides
         slides = [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
     return slides

@@ -1,6 +1,6 @@
 "use client";
 
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useThreadRuntime } from "@assistant-ui/react";
 import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { Chat } from "@/components/chat";
 import { useState, useCallback } from "react";
@@ -13,6 +13,16 @@ type AppView = "chat" | "loading" | "slides";
 export default function Home() {
   const runtime = useChatRuntime();
 
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <HomeContent />
+    </AssistantRuntimeProvider>
+  );
+}
+
+function HomeContent() {
+  const threadRuntime = useThreadRuntime();
+
   const [view, setView] = useState<AppView>("chat");
   const [hasMessages, setHasMessages] = useState(false);
   const [slides, setSlides] = useState<Slide[]>([]);
@@ -23,11 +33,22 @@ export default function Home() {
     setError(null);
     setView("loading");
 
+    // Extract actual chat content from assistant-ui thread
+    const messages = threadRuntime.getState().messages;
+    const content = messages
+      .map((m) =>
+        m.content
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join(" ")
+      )
+      .join("\n") || "Generate a presentation";
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "Generate a presentation" }),
+        body: JSON.stringify({ content }),
       });
 
       if (!res.ok) {
@@ -48,14 +69,13 @@ export default function Home() {
       );
       setView("chat");
     }
-  }, []);
+  }, [threadRuntime]);
 
   const handlePresent = useCallback((index: number) => {
     setPresentFromIndex(index);
   }, []);
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
       <div className="h-dvh bg-zinc-950 flex flex-col overflow-hidden">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-zinc-800 px-5 py-3 shrink-0">
@@ -216,7 +236,6 @@ export default function Home() {
           )}
         </main>
       </div>
-    </AssistantRuntimeProvider>
   );
 }
 
