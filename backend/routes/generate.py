@@ -17,5 +17,5 @@ async def generate_slides(request: GenerateRequest) -> GenerateResponse:
     In mock mode (no OPENAI_API_KEY), returns hardcoded sample slides.
     In live mode, runs the full Railtracks multi-agent pipeline.
     """
-    slides = run_pipeline(request.content)
+    slides = await run_pipeline(request.content)
     return GenerateResponse(slides=slides)

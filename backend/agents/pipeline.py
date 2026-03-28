@@ -88,7 +88,7 @@ def _is_mock_mode() -> bool:
     return not os.environ.get("OPENAI_API_KEY")
 
 
-def run_pipeline(content: str) -> List[dict]:
+async def run_pipeline(content: str) -> List[dict]:
     """Run the slide generation pipeline.
 
     In mock mode (no OPENAI_API_KEY), returns hardcoded sample slides.
@@ -111,7 +111,7 @@ def run_pipeline(content: str) -> List[dict]:
 
     orchestrator = create_orchestrator()
     flow = rt.Flow(name="Slide Generation Pipeline", entry_point=orchestrator)
-    raw_result = flow.invoke(content)
+    raw_result = await flow.ainvoke(content)
 
     # Parse the agent output into validated Slide objects
     try:
