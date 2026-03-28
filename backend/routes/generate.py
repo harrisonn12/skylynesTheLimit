@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from backend.agents.pipeline import run_pipeline
-from backend.models.slides import GenerateRequest, GenerateResponse
+from agents.pipeline import run_pipeline
+from models.slides import GenerateRequest, GenerateResponse
 
 router = APIRouter()
 

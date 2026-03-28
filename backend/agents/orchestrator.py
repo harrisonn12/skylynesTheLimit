@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import railtracks as rt
 
-from backend.agents.ingredient_agent import create_ingredient_agent
-from backend.agents.creation_agent import create_creation_agent
+from agents.ingredient_agent import create_ingredient_agent
+from agents.creation_agent import create_creation_agent
 
 ORCHESTRATOR_SYSTEM_MESSAGE = """You are the Slide Orchestrator. You coordinate a two-step pipeline to turn raw user content into presentation slides.
 

@@ -1,3 +1,3 @@
-from backend.models.slides import Slide, SlideIngredients, SlideType
+from models.slides import Slide, SlideIngredients, SlideType
 
 __all__ = ["Slide", "SlideIngredients", "SlideType"]

@@ -6,7 +6,7 @@ import json
 import os
 from typing import List
 
-from backend.models.slides import Slide, SlideType
+from models.slides import Slide, SlideType
 
 # ---------------------------------------------------------------------------
 # Mock slide data (used when OPENAI_API_KEY is not set)
@@ -103,7 +103,7 @@ def run_pipeline(content: str) -> List[dict]:
     # Live mode — run the Railtracks orchestrator
     import railtracks as rt  # noqa: delay import so mock mode works without railtracks installed
 
-    from backend.agents.orchestrator import create_orchestrator
+    from agents.orchestrator import create_orchestrator
 
     orchestrator = create_orchestrator()
     flow = rt.Flow(name="Slide Generation Pipeline", entry_point=orchestrator)

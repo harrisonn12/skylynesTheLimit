@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.routes.generate import router as generate_router
+from routes.generate import router as generate_router
 
 app = FastAPI(title="Agent Backend")
 
