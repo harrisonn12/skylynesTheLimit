@@ -92,3 +92,25 @@ class RefineSlideResponse(BaseModel):
     """Full deck after refine (same shape as generate)."""
 
     slides: List[Slide]
+
+
+class QaRequest(BaseModel):
+    """Live presentation Q&A: answer using chat thread + attachments as knowledge base."""
+
+    question: str = Field(..., min_length=1, description="Audience or presenter question")
+    messages: Optional[List[dict[str, Any]]] = Field(
+        default=None,
+        description="Same shapes as /api/generate — thread + file parts",
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description="Plain-text knowledge fallback when messages is empty",
+    )
+    slides: Optional[List[dict[str, Any]]] = Field(
+        default=None,
+        description="Optional current deck (title/body) for extra grounding",
+    )
+
+
+class QaResponse(BaseModel):
+    answer: str

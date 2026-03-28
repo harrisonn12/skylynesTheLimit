@@ -185,6 +185,11 @@ function HomeContent() {
                 slides={slides}
                 startIndex={presentFromIndex}
                 onExit={() => {}}
+                getQaMessages={() =>
+                  threadMessagesForGenerate(
+                    threadRuntime.getState().messages as unknown[]
+                  )
+                }
               />
             )}
           </div>

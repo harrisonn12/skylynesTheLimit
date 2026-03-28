@@ -257,6 +257,61 @@ def compile_messages_for_slide_generation(messages: list) -> str | list:
     return collapsed
 
 
+def compile_messages_for_live_qa(messages: list) -> str | list:
+    """Build knowledge-base payload for live Q&A (conversation + attachments)."""
+    blocks: list[dict] = [
+        {
+            "type": "text",
+            "text": (
+                "Knowledge base for a live presentation Q&A. Use ONLY facts from the "
+                "conversation and attached materials below. If something is not covered, "
+                "say clearly that the materials do not contain enough information—do "
+                "not invent specifics.\n\n"
+            ),
+        }
+    ]
+
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role", "user")
+        if role not in ("user", "assistant"):
+            continue
+        label = "USER" if role == "user" else "ASSISTANT"
+        blocks.append({"type": "text", "text": f"\n### {label}\n"})
+
+        parts = iter_message_parts(m)
+        if not parts:
+            t = extract_text_from_message(m).strip()
+            if t:
+                blocks.append({"type": "text", "text": t + "\n"})
+            continue
+
+        for part in parts:
+            pt = part.get("type")
+            if pt == "text":
+                t = (part.get("text") or "").strip()
+                if t:
+                    blocks.append({"type": "text", "text": t + "\n"})
+            elif pt == "file":
+                blocks.extend(file_part_to_openai_blocks(part))
+
+    collapsed = collapse_adjacent_text_blocks(blocks)
+    has_image = any(
+        isinstance(b, dict) and b.get("type") == "image_url" for b in collapsed
+    )
+    if not has_image:
+        texts = [
+            (b.get("text") or "")
+            for b in collapsed
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        full = "".join(texts).strip()
+        return full or "(No chat context was provided.)"
+
+    return collapsed
+
+
 def build_user_openai_message(m: dict) -> dict:
     """Build a user message for OpenAI (string or multimodal content array)."""
     blocks: list[dict] = []

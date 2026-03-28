@@ -2,11 +2,17 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+export type VoiceNavigationOptions = {
+  /** Fired when the recognizer commits a final phrase (good for Q&A prompts). */
+  onFinalTranscript?: (text: string) => void;
+};
+
 interface VoiceNavigationResult {
   isListening: boolean;
   transcript: string;
   startListening: () => void;
   stopListening: () => void;
+  clearTranscript: () => void;
   supported: boolean;
 }
 
@@ -36,13 +42,15 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
-export function useVoiceNavigation(): VoiceNavigationResult {
+export function useVoiceNavigation(options?: VoiceNavigationOptions): VoiceNavigationResult {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [supported, setSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const shouldBeListening = useRef(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onFinalRef = useRef(options?.onFinalTranscript);
+  onFinalRef.current = options?.onFinalTranscript;
 
   useEffect(() => {
     setSupported(getSpeechRecognition() !== null);
@@ -84,6 +92,10 @@ export function useVoiceNavigation(): VoiceNavigationResult {
       const text = (finalTranscript || interimTranscript).trim().toLowerCase();
       if (text) {
         setTranscript(text);
+      }
+      const finalTrimmed = finalTranscript.trim();
+      if (finalTrimmed) {
+        onFinalRef.current?.(finalTrimmed);
       }
     };
 
@@ -132,6 +144,10 @@ export function useVoiceNavigation(): VoiceNavigationResult {
     setTranscript('');
   }, []);
 
+  const clearTranscript = useCallback(() => {
+    setTranscript('');
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -145,5 +161,5 @@ export function useVoiceNavigation(): VoiceNavigationResult {
     };
   }, []);
 
-  return { isListening, transcript, startListening, stopListening, supported };
+  return { isListening, transcript, startListening, stopListening, clearTranscript, supported };
 }

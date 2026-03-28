@@ -1,18 +1,43 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { type Slide } from '@/lib/mockSlides';
+import type { GenerateMessagePayload } from '@/lib/threadMessagesForGenerate';
 import SlideRenderer from '../slides/SlideRenderer';
 import VoiceController from './VoiceController';
 import { useVoiceNavigation } from '@/hooks/useVoiceNavigation';
+
+/** Reserved presenter phrase → jump to live Q&A slide (Web Speech often drops “?”). */
+const ANY_QUESTIONS_RE =
+  /\bany questions?\b|\bhave any questions\b|\bdoes anyone have (any )?questions\b|\bgot any questions\b/i;
+
+const EXIT_QA_RE =
+  /\b(continue presentation|resume (the )?slides|end q\s*a|back to (the )?slides|exit q\s*a)\b/i;
+
+function isQaCommandNoise(text: string): boolean {
+  const t = text.trim();
+  const lower = t.toLowerCase();
+  if (ANY_QUESTIONS_RE.test(lower)) return true;
+  if (/\b(next|next slide|back|previous|go back|previous slide|first slide|last slide|go to start|go to end)\b/.test(lower))
+    return true;
+  if (EXIT_QA_RE.test(lower)) return true;
+  return false;
+}
 
 interface PresentModeProps {
   slides: Slide[];
   startIndex?: number;
   onExit?: () => void;
+  /** Chat thread + file parts used as the Q&A knowledge base (same shape as Generate). */
+  getQaMessages?: () => GenerateMessagePayload[];
 }
 
-export default function PresentMode({ slides, startIndex = 0, onExit }: PresentModeProps) {
+export default function PresentMode({
+  slides,
+  startIndex = 0,
+  onExit,
+  getQaMessages,
+}: PresentModeProps) {
   const [currentIndex, setCurrentIndex] = useState(startIndex);
   const [isActive, setIsActive] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -20,11 +45,32 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
   const [animating, setAnimating] = useState(false);
   const [matchedWord, setMatchedWord] = useState<string | null>(null);
   const matchKeyRef = useRef(0);
+  const preQaIndexRef = useRef(0);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState<string | null>(null);
+  const [qaLastQuestion, setQaLastQuestion] = useState<string | null>(null);
+  const [qaAnswer, setQaAnswer] = useState<string | null>(null);
+  const [typedQuestion, setTypedQuestion] = useState('');
+  const qaFinalHandlerRef = useRef<(text: string) => void>(() => {});
 
-  const { isListening, transcript, startListening, stopListening, supported } = useVoiceNavigation();
+  const qaSlideIndex = slides.length;
+  const total = slides.length + 1;
+  const isQaSlide = currentIndex === qaSlideIndex;
 
-  const total = slides.length;
-  const currentSlide = slides[currentIndex];
+  const { isListening, transcript, startListening, stopListening, clearTranscript, supported } =
+    useVoiceNavigation({
+      onFinalTranscript: (t) => qaFinalHandlerRef.current(t),
+    });
+
+  const slidesRef = useRef(slides);
+  slidesRef.current = slides;
+  const getQaMessagesRef = useRef(getQaMessages);
+  getQaMessagesRef.current = getQaMessages;
+
+  const currentSlide = useMemo(() => {
+    if (isQaSlide) return null;
+    return slides[currentIndex] ?? slides[0];
+  }, [slides, currentIndex, isQaSlide]);
 
   const goTo = useCallback(
     (next: number, dir: 'left' | 'right') => {
@@ -51,20 +97,75 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
     [currentIndex, total, goTo],
   );
 
+  const submitAudienceQuestion = useCallback(
+    async (question: string) => {
+      const q = question.trim();
+      if (!q || qaLoading) return;
+      setQaLoading(true);
+      setQaError(null);
+      try {
+        const messages = getQaMessagesRef.current?.() ?? [];
+        const deck = slidesRef.current.map((s) => ({ title: s.title, body: s.body }));
+        const res = await fetch('/api/qa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: q,
+            ...(messages.length > 0 ? { messages } : {}),
+            slides: deck,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === 'string' ? data.error : `Request failed (${res.status})`,
+          );
+        }
+        setQaLastQuestion(q);
+        setQaAnswer(typeof data.answer === 'string' ? data.answer : '');
+      } catch (e) {
+        setQaError(e instanceof Error ? e.message : 'Could not get an answer.');
+      } finally {
+        setQaLoading(false);
+        clearTranscript();
+      }
+    },
+    [qaLoading, clearTranscript],
+  );
+
+  useEffect(() => {
+    qaFinalHandlerRef.current = (text: string) => {
+      if (!isActive || currentIndex !== qaSlideIndex || qaLoading) return;
+      const raw = text.trim();
+      if (raw.length < 4) return;
+      if (isQaCommandNoise(raw)) return;
+      void submitAudienceQuestion(raw);
+    };
+  }, [isActive, currentIndex, qaSlideIndex, qaLoading, submitAudienceQuestion]);
+
   const exitPresent = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setIsActive(false);
     stopListening();
+    setQaError(null);
+    setTypedQuestion('');
     onExit?.();
   }, [onExit, stopListening]);
 
   const enterPresent = useCallback(() => {
+    const maxStart = Math.max(0, slides.length - 1);
+    const idx = Math.min(Math.max(0, startIndex), maxStart);
+    setCurrentIndex(idx);
+    setQaError(null);
+    setQaLastQuestion(null);
+    setQaAnswer(null);
+    setTypedQuestion('');
     setIsActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
     if (supported) {
       startListening();
     }
-  }, [supported, startListening]);
+  }, [supported, startListening, slides.length, startIndex]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -96,7 +197,44 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
 
     const text = transcript.toLowerCase().trim();
 
-    // Navigation commands
+    if (currentIndex === qaSlideIndex) {
+      if (/\b(next|next slide)\b/.test(text)) {
+        goNext();
+        clearTranscript();
+        return;
+      }
+      if (/\b(back|previous|go back|previous slide)\b/.test(text)) {
+        goPrev();
+        clearTranscript();
+        return;
+      }
+      if (/\b(first slide|go to start|first)\b/.test(text)) {
+        goToSlide(0);
+        clearTranscript();
+        return;
+      }
+      if (/\b(last slide|go to end|last)\b/.test(text)) {
+        goToSlide(Math.max(0, slides.length - 1));
+        clearTranscript();
+        return;
+      }
+      if (EXIT_QA_RE.test(text)) {
+        goTo(preQaIndexRef.current, 'right');
+        clearTranscript();
+        return;
+      }
+      return;
+    }
+
+    if (ANY_QUESTIONS_RE.test(text)) {
+      preQaIndexRef.current = currentIndex;
+      goToSlide(qaSlideIndex);
+      matchKeyRef.current += 1;
+      setMatchedWord('Q&A');
+      clearTranscript();
+      return;
+    }
+
     if (/\b(next|next slide)\b/.test(text)) {
       goNext();
       return;
@@ -110,11 +248,10 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
       return;
     }
     if (/\b(last slide|go to end|last)\b/.test(text)) {
-      goToSlide(total - 1);
+      goToSlide(Math.max(0, slides.length - 1));
       return;
     }
 
-    // Trigger word matching — check all slides
     for (let i = 0; i < slides.length; i++) {
       const slide = slides[i];
       for (const trigger of slide.trigger_words) {
@@ -126,7 +263,19 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
         }
       }
     }
-  }, [transcript, isActive, goNext, goPrev, goToSlide, slides, total]);
+  }, [
+    transcript,
+    isActive,
+    currentIndex,
+    qaSlideIndex,
+    goNext,
+    goPrev,
+    goToSlide,
+    goTo,
+    slides,
+    total,
+    clearTranscript,
+  ]);
 
   // Stop listening when exiting via fullscreen change
   // Listen for fullscreen exit
@@ -165,7 +314,6 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
 
   return (
     <div className="fixed inset-0 z-[9999] bg-gray-950 flex flex-col" onClick={goNext}>
-      {/* Voice control overlay */}
       <VoiceController
         isListening={isListening}
         transcript={transcript}
@@ -173,14 +321,82 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
         key={matchKeyRef.current}
       />
 
-      {/* Slide area */}
       <div className="flex-1 flex items-center justify-center overflow-hidden">
         <div className={`w-full h-full transition-all duration-300 ease-out ${slideTransform}`}>
-          <SlideRenderer slide={currentSlide} className="w-full h-full" />
+          {isQaSlide ? (
+            <div
+              className="bg-gray-950 text-white aspect-video w-full h-full flex flex-col px-10 md:px-20 py-10 border border-white/5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shrink-0 mb-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-400/90 mb-2">Live Q&amp;A</p>
+                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-emerald-300 to-cyan-400 bg-clip-text text-transparent">
+                  Ask a question
+                </h1>
+                <p className="text-gray-400 mt-3 text-lg max-w-3xl">
+                  Questions picked up from the mic are answered from your chat thread and uploaded materials.
+                  Say <span className="text-gray-200">&quot;continue presentation&quot;</span> to return where you left off.
+                </p>
+              </div>
+
+              <div className="flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-y-auto p-6 md:p-8 space-y-6">
+                {qaLoading && (
+                  <p className="text-cyan-300/90 animate-pulse">Thinking…</p>
+                )}
+                {qaError && (
+                  <p className="text-red-400 text-sm">{qaError}</p>
+                )}
+                {qaLastQuestion && (
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Question</h3>
+                    <p className="text-xl text-gray-100 leading-relaxed">{qaLastQuestion}</p>
+                  </div>
+                )}
+                {qaAnswer && (
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Answer</h3>
+                    <p className="text-lg text-gray-300 leading-relaxed whitespace-pre-wrap">{qaAnswer}</p>
+                  </div>
+                )}
+                {!qaLoading && !qaLastQuestion && !qaError && (
+                  <p className="text-gray-500 text-center py-8">
+                    Waiting for a question…
+                  </p>
+                )}
+              </div>
+
+              <form
+                className="shrink-0 mt-6 flex flex-col sm:flex-row gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submitAudienceQuestion(typedQuestion);
+                  setTypedQuestion('');
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="text"
+                  value={typedQuestion}
+                  onChange={(e) => setTypedQuestion(e.target.value)}
+                  placeholder="Or type an audience question…"
+                  className="flex-1 rounded-xl bg-white/5 border border-white/15 px-4 py-3 text-gray-100 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  disabled={qaLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={qaLoading || !typedQuestion.trim()}
+                  className="rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:pointer-events-none text-white font-semibold px-6 py-3 transition-colors"
+                >
+                  Ask
+                </button>
+              </form>
+            </div>
+          ) : (
+            currentSlide && <SlideRenderer slide={currentSlide} className="w-full h-full" />
+          )}
         </div>
       </div>
 
-      {/* Bottom bar */}
       <div
         className="flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur text-sm"
         onClick={(e) => e.stopPropagation()}
@@ -190,14 +406,18 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
             ← Prev
           </button>
           <span className="text-gray-400 font-mono">
-            {currentIndex + 1} / {total}
+            {isQaSlide ? 'Q&A' : `${currentIndex + 1} / ${total}`}
           </span>
           <button onClick={goNext} disabled={currentIndex === total - 1} className="text-gray-400 hover:text-white disabled:opacity-30 transition-colors">
             Next →
           </button>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={() => setShowNotes((p) => !p)} className={`transition-colors ${showNotes ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}>
+          <button
+            onClick={() => setShowNotes((p) => !p)}
+            disabled={isQaSlide}
+            className={`transition-colors disabled:opacity-25 disabled:pointer-events-none ${showNotes ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+          >
             Notes (S)
           </button>
           <button onClick={exitPresent} className="text-gray-400 hover:text-white transition-colors">
@@ -206,8 +426,7 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
         </div>
       </div>
 
-      {/* Speaker notes overlay */}
-      {showNotes && currentSlide.speaker_notes && (
+      {showNotes && currentSlide?.speaker_notes && (
         <div
           className="absolute bottom-16 left-6 right-6 bg-black/80 backdrop-blur-xl rounded-xl border border-white/10 p-6 max-h-48 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
@@ -217,7 +436,6 @@ export default function PresentMode({ slides, startIndex = 0, onExit }: PresentM
         </div>
       )}
 
-      {/* Progress bar */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gray-800">
         <div
           className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
