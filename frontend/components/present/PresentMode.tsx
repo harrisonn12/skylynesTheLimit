@@ -186,6 +186,8 @@ export default function PresentMode({
       const raw = text.trim();
       if (raw.length < 2) return;
 
+      const hasAnswerVisible = Boolean(qaAnswer?.trim());
+
       const combined = extractQuestionAfterArmPhrase(raw);
       if (combined && combined.length >= 3) {
         void submitAudienceQuestion(combined);
@@ -193,17 +195,32 @@ export default function PresentMode({
       }
 
       if (QA_ARM_ONLY_RE.test(raw)) {
-        armVoiceQa();
+        if (hasAnswerVisible) armVoiceQa();
         return;
       }
 
       if (isQaCommandNoise(raw)) return;
 
-      if (Date.now() < qaVoiceArmUntilRef.current) {
+      if (hasAnswerVisible) {
+        if (Date.now() < qaVoiceArmUntilRef.current) {
+          void submitAudienceQuestion(raw);
+        }
+        return;
+      }
+
+      if (raw.length >= 3) {
         void submitAudienceQuestion(raw);
       }
     };
-  }, [isActive, currentIndex, qaSlideIndex, qaLoading, submitAudienceQuestion, armVoiceQa]);
+  }, [
+    isActive,
+    currentIndex,
+    qaSlideIndex,
+    qaLoading,
+    qaAnswer,
+    submitAudienceQuestion,
+    armVoiceQa,
+  ]);
 
   const exitPresent = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -399,6 +416,7 @@ export default function PresentMode({
               qaError={qaError}
               qaLastQuestion={qaLastQuestion}
               qaAnswer={qaAnswer}
+              hasAnswerVisible={Boolean(qaAnswer?.trim())}
               voiceArmed={qaVoiceArmed}
               typedQuestion={typedQuestion}
               onTypedQuestionChange={setTypedQuestion}

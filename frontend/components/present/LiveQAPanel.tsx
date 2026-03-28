@@ -9,7 +9,9 @@ type LiveQAPanelProps = {
   qaError: string | null;
   qaLastQuestion: string | null;
   qaAnswer: string | null;
-  /** Mic is armed for one voice question after a reserved phrase (or combined phrase + question). */
+  /** When true, voice follow-ups require the reserved phrase (first question does not). */
+  hasAnswerVisible: boolean;
+  /** Mic is armed for one voice question after a reserved phrase (only used when an answer is visible). */
   voiceArmed: boolean;
   typedQuestion: string;
   onTypedQuestionChange: (value: string) => void;
@@ -43,6 +45,7 @@ export default function LiveQAPanel({
   qaError,
   qaLastQuestion,
   qaAnswer,
+  hasAnswerVisible,
   voiceArmed,
   typedQuestion,
   onTypedQuestionChange,
@@ -98,14 +101,26 @@ export default function LiveQAPanel({
               </span>
             </h1>
             <p className="mt-2 max-w-2xl text-sm md:text-base text-zinc-400 leading-relaxed">
-              Voice questions need a reserved phrase first:{' '}
-              <span className="text-zinc-200 font-medium">&quot;Next question&quot;</span>,{' '}
-              <span className="text-zinc-200 font-medium">&quot;New question&quot;</span>, or{' '}
-              <span className="text-zinc-200 font-medium">&quot;Ask now&quot;</span> — then ask, or say it in one sentence
-              (e.g. &quot;Next question, what is the timeline?&quot;). Typed questions skip this. Say{' '}
-              <span className="text-zinc-200 font-medium">&quot;continue presentation&quot;</span> to leave this slide.
+              {hasAnswerVisible ? (
+                <>
+                  Another voice question? Use a reserved phrase first:{' '}
+                  <span className="text-zinc-200 font-medium">&quot;Next question&quot;</span>,{' '}
+                  <span className="text-zinc-200 font-medium">&quot;New question&quot;</span>, or{' '}
+                  <span className="text-zinc-200 font-medium">&quot;Ask now&quot;</span> — then ask, or say both in one line
+                  (e.g. &quot;Next question, what is the timeline?&quot;). Typed questions never need this.
+                </>
+              ) : (
+                <>
+                  First voice question: just ask. After an answer appears on this slide, say{' '}
+                  <span className="text-zinc-200 font-medium">&quot;Next question&quot;</span>,{' '}
+                  <span className="text-zinc-200 font-medium">&quot;New question&quot;</span>, or{' '}
+                  <span className="text-zinc-200 font-medium">&quot;Ask now&quot;</span> before each additional voice question
+                  (or combine in one sentence). Typed questions always work as-is.
+                </>
+              )}{' '}
+              Say <span className="text-zinc-200 font-medium">&quot;continue presentation&quot;</span> to leave this slide.
             </p>
-            {voiceArmed && (
+            {hasAnswerVisible && voiceArmed && (
               <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200/95">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                 Ready — ask your question (arms for ~25 seconds)
@@ -194,9 +209,9 @@ export default function LiveQAPanel({
               <div>
                 <p className="text-lg font-semibold text-zinc-200">Waiting for a question</p>
                 <p className="mt-1 text-sm text-zinc-500 max-w-md mx-auto">
-                  For voice, say <span className="text-zinc-400">&quot;Next question&quot;</span> (or{' '}
-                  <span className="text-zinc-400">&quot;New question&quot;</span> /{' '}
-                  <span className="text-zinc-400">&quot;Ask now&quot;</span>) before each question, or type below.
+                  Ask by voice or type below. After you have an answer on screen, use{' '}
+                  <span className="text-zinc-400">&quot;Next question&quot;</span> (or New question / Ask now) before each
+                  further voice question.
                 </p>
               </div>
             </div>
@@ -211,7 +226,7 @@ export default function LiveQAPanel({
             type="text"
             value={typedQuestion}
             onChange={(e) => onTypedQuestionChange(e.target.value)}
-            placeholder="Type a question (no voice keyword needed)…"
+            placeholder="Type a question (no reserved phrase needed)…"
             className="flex-1 rounded-xl bg-zinc-900/80 border border-white/10 px-4 py-3.5 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/30 transition-shadow"
             disabled={qaLoading}
             aria-label="Type a question"
