@@ -9,6 +9,8 @@ type LiveQAPanelProps = {
   qaError: string | null;
   qaLastQuestion: string | null;
   qaAnswer: string | null;
+  /** Mic is armed for one voice question after a reserved phrase (or combined phrase + question). */
+  voiceArmed: boolean;
   typedQuestion: string;
   onTypedQuestionChange: (value: string) => void;
   onSubmitTyped: (e: FormEvent) => void;
@@ -41,6 +43,7 @@ export default function LiveQAPanel({
   qaError,
   qaLastQuestion,
   qaAnswer,
+  voiceArmed,
   typedQuestion,
   onTypedQuestionChange,
   onSubmitTyped,
@@ -95,9 +98,19 @@ export default function LiveQAPanel({
               </span>
             </h1>
             <p className="mt-2 max-w-2xl text-sm md:text-base text-zinc-400 leading-relaxed">
-              Answers are grounded in your chat thread and uploads. Say{' '}
+              Voice questions need a reserved phrase first:{' '}
+              <span className="text-zinc-200 font-medium">&quot;Next question&quot;</span>,{' '}
+              <span className="text-zinc-200 font-medium">&quot;New question&quot;</span>, or{' '}
+              <span className="text-zinc-200 font-medium">&quot;Ask now&quot;</span> — then ask, or say it in one sentence
+              (e.g. &quot;Next question, what is the timeline?&quot;). Typed questions skip this. Say{' '}
               <span className="text-zinc-200 font-medium">&quot;continue presentation&quot;</span> to leave this slide.
             </p>
+            {voiceArmed && (
+              <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200/95">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                Ready — ask your question (arms for ~25 seconds)
+              </p>
+            )}
           </div>
           {transcript.trim() && (
             <div className="shrink-0 max-w-md rounded-xl border border-white/10 bg-black/50 px-4 py-3 backdrop-blur-md">
@@ -180,8 +193,10 @@ export default function LiveQAPanel({
               </div>
               <div>
                 <p className="text-lg font-semibold text-zinc-200">Waiting for a question</p>
-                <p className="mt-1 text-sm text-zinc-500 max-w-sm mx-auto">
-                  Speak toward the mic or type below. Your audience will see the answer on this slide.
+                <p className="mt-1 text-sm text-zinc-500 max-w-md mx-auto">
+                  For voice, say <span className="text-zinc-400">&quot;Next question&quot;</span> (or{' '}
+                  <span className="text-zinc-400">&quot;New question&quot;</span> /{' '}
+                  <span className="text-zinc-400">&quot;Ask now&quot;</span>) before each question, or type below.
                 </p>
               </div>
             </div>
@@ -196,7 +211,7 @@ export default function LiveQAPanel({
             type="text"
             value={typedQuestion}
             onChange={(e) => onTypedQuestionChange(e.target.value)}
-            placeholder="Type a question for the room…"
+            placeholder="Type a question (no voice keyword needed)…"
             className="flex-1 rounded-xl bg-zinc-900/80 border border-white/10 px-4 py-3.5 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/30 transition-shadow"
             disabled={qaLoading}
             aria-label="Type a question"

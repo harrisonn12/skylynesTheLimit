@@ -15,11 +15,30 @@ const ANY_QUESTIONS_RE =
 const EXIT_QA_RE =
   /\b(continue presentation|resume (the )?slides|end q\s*a|back to (the )?slides|exit q\s*a)\b/i;
 
+/** Standalone utterance arms voice Q&A for ~25s; same phrases can prefix a question in one breath. */
+const QA_ARM_ONLY_RE = /^(next question|new question|ask now)[\s.!,?]*$/i;
+
+function extractQuestionAfterArmPhrase(text: string): string | null {
+  const re = /\b(next question|new question|ask now)\b\s*[:,]?\s*/i;
+  const m = text.match(re);
+  if (!m || m.index === undefined) return null;
+  const rest = text.slice(m.index + m[0].length).trim();
+  return rest.length > 0 ? rest : null;
+}
+
+/** True when transcript should advance slides — excludes "next question" (Q&A arm phrase). */
+function voiceWantsNextSlide(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (/\bnext question\b/.test(lower)) return false;
+  return /\b(next|next slide)\b/.test(lower);
+}
+
 function isQaCommandNoise(text: string): boolean {
   const t = text.trim();
   const lower = t.toLowerCase();
   if (ANY_QUESTIONS_RE.test(lower)) return true;
-  if (/\b(next|next slide|back|previous|go back|previous slide|first slide|last slide|go to start|go to end)\b/.test(lower))
+  if (voiceWantsNextSlide(lower)) return true;
+  if (/\b(back|previous|go back|previous slide|first slide|last slide|go to start|go to end)\b/.test(lower))
     return true;
   if (EXIT_QA_RE.test(lower)) return true;
   return false;
@@ -53,6 +72,9 @@ export default function PresentMode({
   const [qaAnswer, setQaAnswer] = useState<string | null>(null);
   const [typedQuestion, setTypedQuestion] = useState('');
   const qaFinalHandlerRef = useRef<(text: string) => void>(() => {});
+  const qaVoiceArmUntilRef = useRef(0);
+  const qaArmExpireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [qaVoiceArmed, setQaVoiceArmed] = useState(false);
 
   const qaSlideIndex = slides.length;
   const total = slides.length + 1;
@@ -98,6 +120,29 @@ export default function PresentMode({
     [currentIndex, total, goTo],
   );
 
+  const disarmVoiceQa = useCallback(() => {
+    if (qaArmExpireTimerRef.current) {
+      clearTimeout(qaArmExpireTimerRef.current);
+      qaArmExpireTimerRef.current = null;
+    }
+    qaVoiceArmUntilRef.current = 0;
+    setQaVoiceArmed(false);
+  }, []);
+
+  const armVoiceQa = useCallback(() => {
+    if (qaArmExpireTimerRef.current) {
+      clearTimeout(qaArmExpireTimerRef.current);
+    }
+    qaVoiceArmUntilRef.current = Date.now() + 25_000;
+    setQaVoiceArmed(true);
+    clearTranscript();
+    qaArmExpireTimerRef.current = setTimeout(() => {
+      qaVoiceArmUntilRef.current = 0;
+      setQaVoiceArmed(false);
+      qaArmExpireTimerRef.current = null;
+    }, 25_000);
+  }, [clearTranscript]);
+
   const submitAudienceQuestion = useCallback(
     async (question: string) => {
       const q = question.trim();
@@ -128,30 +173,47 @@ export default function PresentMode({
         setQaError(e instanceof Error ? e.message : 'Could not get an answer.');
       } finally {
         setQaLoading(false);
+        disarmVoiceQa();
         clearTranscript();
       }
     },
-    [qaLoading, clearTranscript],
+    [qaLoading, clearTranscript, disarmVoiceQa],
   );
 
   useEffect(() => {
     qaFinalHandlerRef.current = (text: string) => {
       if (!isActive || currentIndex !== qaSlideIndex || qaLoading) return;
       const raw = text.trim();
-      if (raw.length < 4) return;
+      if (raw.length < 2) return;
+
+      const combined = extractQuestionAfterArmPhrase(raw);
+      if (combined && combined.length >= 3) {
+        void submitAudienceQuestion(combined);
+        return;
+      }
+
+      if (QA_ARM_ONLY_RE.test(raw)) {
+        armVoiceQa();
+        return;
+      }
+
       if (isQaCommandNoise(raw)) return;
-      void submitAudienceQuestion(raw);
+
+      if (Date.now() < qaVoiceArmUntilRef.current) {
+        void submitAudienceQuestion(raw);
+      }
     };
-  }, [isActive, currentIndex, qaSlideIndex, qaLoading, submitAudienceQuestion]);
+  }, [isActive, currentIndex, qaSlideIndex, qaLoading, submitAudienceQuestion, armVoiceQa]);
 
   const exitPresent = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setIsActive(false);
     stopListening();
+    disarmVoiceQa();
     setQaError(null);
     setTypedQuestion('');
     onExit?.();
-  }, [onExit, stopListening]);
+  }, [onExit, stopListening, disarmVoiceQa]);
 
   const enterPresent = useCallback(() => {
     const maxStart = Math.max(0, slides.length - 1);
@@ -161,12 +223,17 @@ export default function PresentMode({
     setQaLastQuestion(null);
     setQaAnswer(null);
     setTypedQuestion('');
+    disarmVoiceQa();
     setIsActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
     if (supported) {
       startListening();
     }
-  }, [supported, startListening, slides.length, startIndex]);
+  }, [supported, startListening, slides.length, startIndex, disarmVoiceQa]);
+
+  useEffect(() => {
+    if (!isQaSlide) disarmVoiceQa();
+  }, [isQaSlide, disarmVoiceQa]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -199,7 +266,7 @@ export default function PresentMode({
     const text = transcript.toLowerCase().trim();
 
     if (currentIndex === qaSlideIndex) {
-      if (/\b(next|next slide)\b/.test(text)) {
+      if (voiceWantsNextSlide(text)) {
         goNext();
         clearTranscript();
         return;
@@ -236,7 +303,7 @@ export default function PresentMode({
       return;
     }
 
-    if (/\b(next|next slide)\b/.test(text)) {
+    if (voiceWantsNextSlide(text)) {
       goNext();
       return;
     }
@@ -332,6 +399,7 @@ export default function PresentMode({
               qaError={qaError}
               qaLastQuestion={qaLastQuestion}
               qaAnswer={qaAnswer}
+              voiceArmed={qaVoiceArmed}
               typedQuestion={typedQuestion}
               onTypedQuestionChange={setTypedQuestion}
               onSubmitTyped={(e) => {
