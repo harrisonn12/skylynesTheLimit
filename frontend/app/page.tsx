@@ -36,12 +36,14 @@ function HomeContent() {
     // Extract actual chat content from assistant-ui thread
     const messages = threadRuntime.getState().messages;
     const content = messages
-      .map((m) =>
-        m.content
-          .filter((p): p is { type: "text"; text: string } => p.type === "text")
-          .map((p) => p.text)
-          .join(" ")
-      )
+      .map((m) => {
+        // assistant-ui ThreadMessage uses 'content', AI SDK UIMessage uses 'parts'
+        const parts = (m as any).parts || (m as any).content || [];
+        return parts
+          .filter((p: any) => p.type === "text")
+          .map((p: any) => p.text || "")
+          .join(" ");
+      })
       .join("\n") || "Generate a presentation";
 
     try {
@@ -59,9 +61,11 @@ function HomeContent() {
       }
 
       const data = await res.json();
+      console.log("Generate response:", data);
       setSlides(data.slides);
       setView("slides");
     } catch (err) {
+      console.error("Generate error:", err);
       setError(
         err instanceof Error
           ? err.message
