@@ -2,19 +2,33 @@
 
 import { Thread, makeMarkdownText } from "@assistant-ui/react-ui";
 import { useThreadRuntime } from "@assistant-ui/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DeckCaptureFeedback } from "@/components/DeckCaptureFeedback";
+import { DeckStructurePanel } from "@/components/DeckStructurePanel";
+import { ghostDeckFromThread } from "@/lib/ghostDeckFromThread";
+import type { Slide } from "@/lib/mockSlides";
 
 interface ChatProps {
   onMessagesChange?: (hasMessages: boolean) => void;
+  slides?: Slide[];
+  hasThreadMessages?: boolean;
+  onOpenSlideIndex?: (index: number) => void;
 }
 
-export function Chat({ onMessagesChange }: ChatProps) {
+export function Chat({
+  onMessagesChange,
+  slides = [],
+  hasThreadMessages = false,
+  onOpenSlideIndex,
+}: ChatProps) {
   const threadRuntime = useThreadRuntime();
   const prevLengthRef = useRef(0);
+  const [threadEpoch, setThreadEpoch] = useState(0);
 
   useEffect(() => {
-    if (!onMessagesChange) return;
     return threadRuntime.subscribe(() => {
+      setThreadEpoch((n) => n + 1);
+      if (!onMessagesChange) return;
       const messages = threadRuntime.getState().messages;
       const len = messages.length;
       if (len !== prevLengthRef.current) {
@@ -23,6 +37,11 @@ export function Chat({ onMessagesChange }: ChatProps) {
       }
     });
   }, [threadRuntime, onMessagesChange]);
+
+  const ghostSlides = useMemo(() => {
+    const messages = threadRuntime.getState().messages;
+    return ghostDeckFromThread(messages as unknown[]);
+  }, [threadEpoch, threadRuntime]);
 
   const MarkdownText = useMemo(() => makeMarkdownText(), []);
 
@@ -68,8 +87,17 @@ export function Chat({ onMessagesChange }: ChatProps) {
   );
 
   return (
-    <div className="aui-root flex h-full min-h-0 flex-1 flex-col">
-      <Thread {...threadConfig} />
+    <div className="aui-root relative flex h-full min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:min-h-0">
+        <DeckCaptureFeedback />
+        <Thread {...threadConfig} />
+      </div>
+      <DeckStructurePanel
+        slides={slides}
+        ghostSlides={ghostSlides}
+        hasThreadMessages={hasThreadMessages}
+        onOpenSlideIndex={onOpenSlideIndex}
+      />
     </div>
   );
 }
