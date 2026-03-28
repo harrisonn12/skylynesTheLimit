@@ -47,9 +47,10 @@ def generate_mock_response(messages: list[Message]):
     # Step start
     yield f'f:{{"messageId":"{uuid.uuid4()}"}}\n'
 
-    # Text parts
+    # Text parts — JSON-escape each token to handle quotes, backslashes, etc.
     for word in response_text.split(" "):
-        yield f'0:"{word} "\n'
+        escaped = json.dumps(word + " ")
+        yield f"0:{escaped}\n"
 
     # Finish step
     yield f'e:{{"finishReason":"stop","usage":{{"promptTokens":0,"completionTokens":0}}}}\n'
@@ -74,7 +75,7 @@ async def chat(request: FastAPIRequest):
 
     return StreamingResponse(
         generate_mock_response(messages),
-        media_type="text/plain",
+        media_type="text/plain; charset=utf-8",
     )
 
 

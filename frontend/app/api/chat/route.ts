@@ -18,10 +18,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // Stream the response back
+  // Forward the stream with correct headers for AI SDK
   return new Response(response.body, {
+    status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+      "X-Vercel-AI-Data-Stream": "v1",
     },
   });
 }
