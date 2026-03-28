@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { type Slide } from '@/lib/mockSlides';
 import type { GenerateMessagePayload } from '@/lib/threadMessagesForGenerate';
 import SlideRenderer from '../slides/SlideRenderer';
+import LiveQAPanel from './LiveQAPanel';
 import VoiceController from './VoiceController';
 import { useVoiceNavigation } from '@/hooks/useVoiceNavigation';
 
@@ -324,73 +325,21 @@ export default function PresentMode({
       <div className="flex-1 flex items-center justify-center overflow-hidden">
         <div className={`w-full h-full transition-all duration-300 ease-out ${slideTransform}`}>
           {isQaSlide ? (
-            <div
-              className="bg-gray-950 text-white aspect-video w-full h-full flex flex-col px-10 md:px-20 py-10 border border-white/5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="shrink-0 mb-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-400/90 mb-2">Live Q&amp;A</p>
-                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-emerald-300 to-cyan-400 bg-clip-text text-transparent">
-                  Ask a question
-                </h1>
-                <p className="text-gray-400 mt-3 text-lg max-w-3xl">
-                  Questions picked up from the mic are answered from your chat thread and uploaded materials.
-                  Say <span className="text-gray-200">&quot;continue presentation&quot;</span> to return where you left off.
-                </p>
-              </div>
-
-              <div className="flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-y-auto p-6 md:p-8 space-y-6">
-                {qaLoading && (
-                  <p className="text-cyan-300/90 animate-pulse">Thinking…</p>
-                )}
-                {qaError && (
-                  <p className="text-red-400 text-sm">{qaError}</p>
-                )}
-                {qaLastQuestion && (
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Question</h3>
-                    <p className="text-xl text-gray-100 leading-relaxed">{qaLastQuestion}</p>
-                  </div>
-                )}
-                {qaAnswer && (
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Answer</h3>
-                    <p className="text-lg text-gray-300 leading-relaxed whitespace-pre-wrap">{qaAnswer}</p>
-                  </div>
-                )}
-                {!qaLoading && !qaLastQuestion && !qaError && (
-                  <p className="text-gray-500 text-center py-8">
-                    Waiting for a question…
-                  </p>
-                )}
-              </div>
-
-              <form
-                className="shrink-0 mt-6 flex flex-col sm:flex-row gap-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void submitAudienceQuestion(typedQuestion);
-                  setTypedQuestion('');
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="text"
-                  value={typedQuestion}
-                  onChange={(e) => setTypedQuestion(e.target.value)}
-                  placeholder="Or type an audience question…"
-                  className="flex-1 rounded-xl bg-white/5 border border-white/15 px-4 py-3 text-gray-100 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                  disabled={qaLoading}
-                />
-                <button
-                  type="submit"
-                  disabled={qaLoading || !typedQuestion.trim()}
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:pointer-events-none text-white font-semibold px-6 py-3 transition-colors"
-                >
-                  Ask
-                </button>
-              </form>
-            </div>
+            <LiveQAPanel
+              isListening={isListening}
+              transcript={transcript}
+              qaLoading={qaLoading}
+              qaError={qaError}
+              qaLastQuestion={qaLastQuestion}
+              qaAnswer={qaAnswer}
+              typedQuestion={typedQuestion}
+              onTypedQuestionChange={setTypedQuestion}
+              onSubmitTyped={(e) => {
+                e.preventDefault();
+                void submitAudienceQuestion(typedQuestion);
+                setTypedQuestion('');
+              }}
+            />
           ) : (
             currentSlide && <SlideRenderer slide={currentSlide} className="w-full h-full" />
           )}
