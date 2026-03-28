@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -59,9 +59,21 @@ def generate_mock_response(messages: list[Message]):
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: FastAPIRequest):
+    body = await request.json()
+    messages_raw = body.get("messages", [])
+    messages = []
+    for m in messages_raw:
+        content = m.get("content", "")
+        # AI SDK can send content as array of objects
+        if isinstance(content, list):
+            content = " ".join(
+                part.get("text", "") for part in content if isinstance(part, dict)
+            )
+        messages.append(Message(role=m.get("role", "user"), content=str(content)))
+
     return StreamingResponse(
-        generate_mock_response(request.messages),
+        generate_mock_response(messages),
         media_type="text/plain",
     )
 
