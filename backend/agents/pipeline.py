@@ -1,4 +1,4 @@
-"""Main pipeline entry point — runs the Railtracks agent flow or returns mock data."""
+"""Main pipeline entry point — runs the Railtracks two-agent flow or returns mock data."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from models.slides import Slide, SlideType
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Mock slide data (used when OPENAI_API_KEY is not set)
@@ -92,33 +94,94 @@ def _is_mock_mode() -> bool:
     return not os.environ.get("OPENAI_API_KEY")
 
 
+def _parse_slides_from_agent_output(raw: str) -> List[dict]:
+    """Parse and validate slides from a Railtracks agent output string."""
+    parsed = json.loads(str(raw))
+    if isinstance(parsed, dict):
+        slides_data = None
+        for key in ["slides", "presentation", "data", "results"]:
+            if key in parsed:
+                slides_data = parsed[key]
+                break
+        if slides_data is None:
+            for v in parsed.values():
+                if isinstance(v, list):
+                    slides_data = v
+                    break
+            else:
+                slides_data = []
+    elif isinstance(parsed, list):
+        slides_data = parsed
+    else:
+        slides_data = []
+
+    validated = []
+    for i, s in enumerate(slides_data):
+        try:
+            validated.append(Slide(**s).model_dump())
+        except Exception as e:
+            logger.warning(f"Slide {i} validation failed: {e}")
+    return validated
+
+
 async def run_pipeline(user_content: Union[str, list]) -> List[dict]:
     """Run the slide generation pipeline.
 
     In mock mode (no OPENAI_API_KEY), returns hardcoded sample slides.
-    In live mode, runs the full Railtracks orchestrator flow.
+    In live mode, runs the two-stage Railtracks agent flow:
+      1. IngredientAgent — extracts key_message, supporting_points, narrative_hooks
+      2. CreationAgent   — produces the final slide JSON array
 
-    Args:
-        user_content: Plain string or OpenAI multimodal content list (text + image_url blocks).
-
-    Returns:
-        A list of slide dictionaries conforming to the Slide schema.
+    Falls back to direct orchestrator call if the agent pipeline fails.
     """
     if _is_mock_mode():
-        # Validate mock data against Pydantic models for consistency
         return [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
-    # Live mode — generate slides with LLM
-    from agents.orchestrator import generate_slides_with_llm
+    # Live mode — two-stage Railtracks agent pipeline
+    try:
+        from agents.ingredient_agent import create_ingredient_agent
+        from agents.creation_agent import create_creation_agent
 
+        IngredientAgent = create_ingredient_agent()
+        CreationAgent = create_creation_agent()
+
+        # Agents accept plain strings — stringify multimodal content lists
+        content_str = (
+            user_content
+            if isinstance(user_content, str)
+            else json.dumps(user_content)
+        )
+
+        # Stage 1: extract structured slide ingredients
+        logger.info("Railtracks: running IngredientAgent")
+        ingredients_json = await rt.call(IngredientAgent, content_str)
+        logger.info(f"Ingredients: {str(ingredients_json)[:400]}")
+
+        # Stage 2: generate slides from ingredients
+        logger.info("Railtracks: running CreationAgent")
+        slides_raw = await rt.call(CreationAgent, str(ingredients_json))
+        logger.info(f"Slides raw (first 400): {str(slides_raw)[:400]}")
+
+        slides = _parse_slides_from_agent_output(str(slides_raw))
+        if slides:
+            logger.info(f"Railtracks pipeline produced {len(slides)} slides")
+            return slides
+
+        logger.warning("Railtracks pipeline returned 0 valid slides — falling back to orchestrator")
+
+    except Exception as e:
+        logger.error(f"Railtracks pipeline failed: {e} — falling back to orchestrator")
+
+    # Fallback: single direct LLM call
+    from agents.orchestrator import generate_slides_with_llm
     try:
         slides = await generate_slides_with_llm(user_content)
     except Exception as e:
-        logging.getLogger(__name__).error(f"LLM slide generation failed: {e}")
+        logger.error(f"Orchestrator failed: {e}")
         slides = []
 
     if not slides:
-        logging.getLogger(__name__).warning("LLM returned 0 slides, falling back to mock")
+        logger.warning("Orchestrator returned 0 slides, using mock fallback")
         slides = [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
     return slides

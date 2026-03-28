@@ -13,6 +13,7 @@ import {
 interface SlideGraphViewProps {
   slides: Slide[];
   onPresentFromSlide?: (index: number) => void;
+  onEditSlide?: (index: number, patch: Partial<Slide>) => void;
 }
 
 function edgePath(
@@ -72,9 +73,13 @@ function curvedEdgeWithLabel(
 export default function SlideGraphView({
   slides,
   onPresentFromSlide,
+  onEditSlide,
 }: SlideGraphViewProps) {
   const markerId = useId().replace(/:/g, '');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState<string[]>([]);
 
   const positions = useMemo(() => layoutSlideNodes(slides.length), [slides.length]);
   const edges = useMemo(() => buildTriggerGraphEdges(slides), [slides]);
@@ -93,36 +98,121 @@ export default function SlideGraphView({
     return bends;
   }, [edges]);
 
+  function openEdit(index: number) {
+    setEditTitle(slides[index].title);
+    setEditBody([...slides[index].body]);
+    setEditMode(true);
+  }
+
+  function saveEdit() {
+    if (selectedIndex === null) return;
+    onEditSlide?.(selectedIndex, { title: editTitle, body: editBody });
+    setEditMode(false);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {selectedIndex !== null && (
         <div className="relative z-20">
-          <button
-            type="button"
-            onClick={() => setSelectedIndex(null)}
-            className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-black/80 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm transition-colors"
-          >
-            ✕
-          </button>
-          <SlideRenderer
-            slide={slides[selectedIndex]}
-            className="w-full rounded-xl border border-white/10 shadow-2xl"
-          />
-          <div className="flex items-center justify-between mt-3 px-2">
-            <span className="text-sm text-gray-400">
-              Slide {selectedIndex + 1} of {slides.length} —{' '}
-              {slides[selectedIndex].type}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-sm text-zinc-400">
+              Slide {selectedIndex + 1} of {slides.length} — {slides[selectedIndex].type}
             </span>
-            {onPresentFromSlide && (
+            <div className="flex items-center gap-2">
+              {onEditSlide && !editMode && (
+                <button
+                  type="button"
+                  onClick={() => openEdit(selectedIndex)}
+                  className="text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-3 py-1 rounded-lg transition-all"
+                >
+                  Edit
+                </button>
+              )}
+              {onPresentFromSlide && (
+                <button
+                  type="button"
+                  onClick={() => onPresentFromSlide(selectedIndex)}
+                  className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors"
+                >
+                  Present from here
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => onPresentFromSlide(selectedIndex)}
-                className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors"
+                onClick={() => { setSelectedIndex(null); setEditMode(false); }}
+                className="bg-black/60 hover:bg-black/80 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm transition-colors"
               >
-                Present from here
+                ✕
               </button>
-            )}
+            </div>
           </div>
+
+          {editMode ? (
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Title</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-zinc-800 text-zinc-100 text-base font-semibold rounded-lg px-3 py-2 border border-zinc-700 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Bullets</label>
+                <div className="flex flex-col gap-2">
+                  {editBody.map((bullet, bi) => (
+                    <div key={bi} className="flex gap-2 items-start">
+                      <textarea
+                        value={bullet}
+                        rows={1}
+                        onChange={(e) => {
+                          const updated = [...editBody];
+                          updated[bi] = e.target.value;
+                          setEditBody(updated);
+                        }}
+                        className="flex-1 bg-zinc-800 text-zinc-200 text-sm rounded-lg px-3 py-2 border border-zinc-700 focus:outline-none focus:border-blue-500 resize-none transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditBody(editBody.filter((_, i) => i !== bi))}
+                        className="text-zinc-600 hover:text-red-400 mt-2 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setEditBody([...editBody, ''])}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 text-left transition-colors"
+                  >
+                    + Add bullet
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  className="text-sm text-zinc-400 hover:text-zinc-200 px-4 py-1.5 rounded-lg border border-zinc-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <SlideRenderer
+              slide={slides[selectedIndex]}
+              className="w-full rounded-xl border border-white/10 shadow-2xl"
+            />
+          )}
         </div>
       )}
 

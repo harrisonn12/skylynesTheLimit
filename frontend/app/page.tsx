@@ -58,6 +58,9 @@ function HomeContent() {
       const data = await res.json();
       console.log("Generate response:", data);
       setSlides(data.slides);
+      try {
+        sessionStorage.setItem("slideforge_slides", JSON.stringify(data.slides));
+      } catch {}
       setView("slides");
     } catch (err) {
       console.error("Generate error:", err);
@@ -73,6 +76,36 @@ function HomeContent() {
   const handlePresent = useCallback((index: number) => {
     setPresentFromIndex(index);
   }, []);
+
+  const handleEditSlide = useCallback((index: number, patch: Partial<import("@/lib/mockSlides").Slide>) => {
+    setSlides((prev) => {
+      const updated = prev.map((s, i) => (i === index ? { ...s, ...patch } : s));
+      try {
+        sessionStorage.setItem("slideforge_slides", JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const handleDownloadPptx = useCallback(async () => {
+    try {
+      const res = await fetch("/api/export/pptx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slides }),
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "flowdeck-presentation.pptx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PPTX export error:", err);
+    }
+  }, [slides]);
 
   return (
       <div className="h-dvh bg-zinc-950 flex flex-col overflow-hidden">
@@ -204,30 +237,52 @@ function HomeContent() {
                       click a node to preview
                     </p>
                   </div>
-                  <button
-                    onClick={handleGenerate}
-                    className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-4 py-2 rounded-lg transition-all"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleDownloadPptx}
+                      className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-4 py-2 rounded-lg transition-all"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
-                      />
-                    </svg>
-                    Regenerate
-                  </button>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        />
+                      </svg>
+                      Download PPTX
+                    </button>
+                    <button
+                      onClick={handleGenerate}
+                      className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-4 py-2 rounded-lg transition-all"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+                        />
+                      </svg>
+                      Regenerate
+                    </button>
+                  </div>
                 </div>
                 <div className="stagger-children">
                   <SlideGraphView
                     slides={slides}
                     onPresentFromSlide={handlePresent}
+                    onEditSlide={handleEditSlide}
                   />
                 </div>
               </div>
