@@ -18,13 +18,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // Forward the stream with correct headers for AI SDK
+  // Forward the stream with correct headers for AI SDK UI Message Stream
   return new Response(response.body, {
     status: 200,
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Transfer-Encoding": "chunked",
-      "X-Vercel-AI-Data-Stream": "v1",
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Vercel-AI-UI-Message-Stream": "v1",
+      "X-Accel-Buffering": "no",
     },
   });
 }

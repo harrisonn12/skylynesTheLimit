@@ -33,7 +33,11 @@ class ChatRequest(BaseModel):
 
 
 def generate_mock_response(messages: list[Message]):
-    """Generate a mock streaming response in AI SDK compatible format."""
+    """Generate a mock streaming response in AI SDK UI Message Stream (SSE) format.
+
+    Format: Server-Sent Events with JSON UIMessageChunk objects.
+    See: https://sdk.vercel.ai/docs/ai-sdk-ui/stream-protocol#ui-message-stream-protocol
+    """
     user_message = messages[-1].content if messages else "Hello"
 
     response_text = (
@@ -41,22 +45,32 @@ def generate_mock_response(messages: list[Message]):
         "I'm a mock assistant — the real agent pipeline is coming soon! 🚀"
     )
 
-    # AI SDK Data Stream Protocol
-    # Format: https://sdk.vercel.ai/docs/ai-sdk-ui/stream-protocol#data-stream-protocol
+    text_part_id = str(uuid.uuid4())
 
-    # Step start
-    yield f'f:{{"messageId":"{uuid.uuid4()}"}}\n'
+    # Start message
+    yield f"data: {json.dumps({'type': 'start', 'messageId': str(uuid.uuid4())})}\n\n"
 
-    # Text parts — JSON-escape each token to handle quotes, backslashes, etc.
+    # Start step
+    yield f"data: {json.dumps({'type': 'start-step'})}\n\n"
+
+    # Text start
+    yield f"data: {json.dumps({'type': 'text-start', 'id': text_part_id})}\n\n"
+
+    # Text deltas — stream word by word
     for word in response_text.split(" "):
-        escaped = json.dumps(word + " ")
-        yield f"0:{escaped}\n"
+        yield f"data: {json.dumps({'type': 'text-delta', 'id': text_part_id, 'delta': word + ' '})}\n\n"
+
+    # Text end
+    yield f"data: {json.dumps({'type': 'text-end', 'id': text_part_id})}\n\n"
 
     # Finish step
-    yield f'e:{{"finishReason":"stop","usage":{{"promptTokens":0,"completionTokens":0}}}}\n'
+    yield f"data: {json.dumps({'type': 'finish-step'})}\n\n"
 
     # Finish message
-    yield f'd:{{"finishReason":"stop","usage":{{"promptTokens":0,"completionTokens":0}}}}\n'
+    yield f"data: {json.dumps({'type': 'finish', 'finishReason': 'stop'})}\n\n"
+
+    # SSE done signal
+    yield "data: [DONE]\n\n"
 
 
 @app.post("/api/chat")
@@ -75,7 +89,13 @@ async def chat(request: FastAPIRequest):
 
     return StreamingResponse(
         generate_mock_response(messages),
-        media_type="text/plain; charset=utf-8",
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Vercel-AI-UI-Message-Stream": "v1",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

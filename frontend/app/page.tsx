@@ -1,12 +1,9 @@
 "use client";
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import {
-  useChatRuntime,
-  AssistantChatTransport,
-} from "@assistant-ui/react-ai-sdk";
+import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { Chat } from "@/components/chat";
-import { useMemo, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { type Slide } from "@/lib/mockSlides";
 import SlidePreview from "@/components/slides/SlidePreview";
 import PresentMode from "@/components/present/PresentMode";
@@ -14,11 +11,7 @@ import PresentMode from "@/components/present/PresentMode";
 type AppView = "chat" | "loading" | "slides";
 
 export default function Home() {
-  const transport = useMemo(
-    () => new AssistantChatTransport({ api: "/api/chat" }),
-    []
-  );
-  const runtime = useChatRuntime({ transport });
+  const runtime = useChatRuntime();
 
   const [view, setView] = useState<AppView>("chat");
   const [hasMessages, setHasMessages] = useState(false);
