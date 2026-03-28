@@ -3,3 +3,5 @@ uvicorn
 railtracks
 openai
 python-dotenv
+pypdf
+python-pptx

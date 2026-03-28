@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import List
+from typing import List, Union
 from models.slides import Slide, SlideType
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,13 @@ Rules:
 - Trigger words should be 2-3 keywords relevant to the slide content
 - Make the content engaging, clear, and professional
 - If the user's input is vague, create a general but impressive presentation about the topic
+- When images or documents are included, use them to inform titles, bullets, and narrative
 
 Return ONLY valid JSON: {"slides": [...]}
 """
 
 
-async def generate_slides_with_llm(content: str) -> List[dict]:
+async def generate_slides_with_llm(user_content: Union[str, list]) -> List[dict]:
     """Generate slides using a direct OpenAI call."""
     from openai import AsyncOpenAI
 
@@ -51,7 +52,7 @@ async def generate_slides_with_llm(content: str) -> List[dict]:
         model="gpt-4o",
         messages=[
             {"role": "system", "content": SLIDE_GENERATION_PROMPT},
-            {"role": "user", "content": content},
+            {"role": "user", "content": user_content},
         ],
         temperature=0.7,
         response_format={"type": "json_object"},

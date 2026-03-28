@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from agents.pipeline import run_pipeline
 from models.slides import GenerateRequest, GenerateResponse
+from thread_context import compile_messages_for_slide_generation
 
 router = APIRouter()
 
@@ -17,5 +18,9 @@ async def generate_slides(request: GenerateRequest) -> GenerateResponse:
     In mock mode (no OPENAI_API_KEY), returns hardcoded sample slides.
     In live mode, runs the full Railtracks multi-agent pipeline.
     """
-    slides = await run_pipeline(request.content)
+    if request.messages:
+        user_payload = compile_messages_for_slide_generation(request.messages)
+    else:
+        user_payload = (request.content or "").strip()
+    slides = await run_pipeline(user_payload)
     return GenerateResponse(slides=slides)

@@ -8,7 +8,7 @@ import railtracks as rt  # noqa: F401 — sponsor tool
 import json
 import logging
 import os
-from typing import List
+from typing import List, Union
 
 from dotenv import load_dotenv
 
@@ -92,14 +92,14 @@ def _is_mock_mode() -> bool:
     return not os.environ.get("OPENAI_API_KEY")
 
 
-async def run_pipeline(content: str) -> List[dict]:
+async def run_pipeline(user_content: Union[str, list]) -> List[dict]:
     """Run the slide generation pipeline.
 
     In mock mode (no OPENAI_API_KEY), returns hardcoded sample slides.
     In live mode, runs the full Railtracks orchestrator flow.
 
     Args:
-        content: Raw user content to convert into slides.
+        user_content: Plain string or OpenAI multimodal content list (text + image_url blocks).
 
     Returns:
         A list of slide dictionaries conforming to the Slide schema.
@@ -112,7 +112,7 @@ async def run_pipeline(content: str) -> List[dict]:
     from agents.orchestrator import generate_slides_with_llm
 
     try:
-        slides = await generate_slides_with_llm(content)
+        slides = await generate_slides_with_llm(user_content)
     except Exception as e:
         logging.getLogger(__name__).error(f"LLM slide generation failed: {e}")
         slides = []

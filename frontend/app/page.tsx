@@ -5,6 +5,7 @@ import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { Chat } from "@/components/chat";
 import { useState, useCallback } from "react";
 import { type Slide } from "@/lib/mockSlides";
+import { threadMessagesForGenerate } from "@/lib/threadMessagesForGenerate";
 import SlidePreview from "@/components/slides/SlidePreview";
 import PresentMode from "@/components/present/PresentMode";
 
@@ -33,24 +34,18 @@ function HomeContent() {
     setError(null);
     setView("loading");
 
-    // Extract actual chat content from assistant-ui thread
-    const messages = threadRuntime.getState().messages;
-    const content = messages
-      .map((m) => {
-        // assistant-ui ThreadMessage uses 'content', AI SDK UIMessage uses 'parts'
-        const parts = (m as any).parts || (m as any).content || [];
-        return parts
-          .filter((p: any) => p.type === "text")
-          .map((p: any) => p.text || "")
-          .join(" ");
-      })
-      .join("\n") || "Generate a presentation";
+    const rawMessages = threadRuntime.getState().messages;
+    const messages = threadMessagesForGenerate(rawMessages as unknown[]);
+    const body =
+      messages.length > 0
+        ? { messages }
+        : { content: "Generate a presentation" };
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SlideType(str, Enum):
@@ -53,7 +53,22 @@ class Slide(BaseModel):
 class GenerateRequest(BaseModel):
     """Request body for the /api/generate endpoint."""
 
-    content: str = Field(..., description="Raw user content to turn into slides")
+    content: Optional[str] = Field(
+        default=None,
+        description="Plain text (legacy). Used when messages is empty or omitted.",
+    )
+    messages: Optional[List[dict[str, Any]]] = Field(
+        default=None,
+        description="Full chat thread (same shapes as /api/chat). Preferred when non-empty.",
+    )
+
+    @model_validator(mode="after")
+    def require_some_input(self) -> GenerateRequest:
+        has_messages = bool(self.messages)
+        has_content = bool(self.content and str(self.content).strip())
+        if not has_messages and not has_content:
+            raise ValueError("Provide non-empty `messages` or `content`")
+        return self
 
 
 class GenerateResponse(BaseModel):

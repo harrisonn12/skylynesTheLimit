@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
 
 import uvicorn
 from dotenv import load_dotenv
@@ -10,9 +9,9 @@ from fastapi import FastAPI, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
-from pydantic import BaseModel
 
 from routes.generate import router as generate_router
+from thread_context import mock_user_preview, raw_message_to_openai
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -32,22 +31,13 @@ app.add_middleware(
 )
 
 
-class Message(BaseModel):
-    role: str
-    content: str
-
-
-class ChatRequest(BaseModel):
-    messages: list[Message]
-
-
-def generate_mock_response(messages: list[Message]):
+def generate_mock_response(openai_messages: list[dict]):
     """Generate a mock streaming response in AI SDK UI Message Stream (SSE) format.
 
     Format: Server-Sent Events with JSON UIMessageChunk objects.
     See: https://sdk.vercel.ai/docs/ai-sdk-ui/stream-protocol#ui-message-stream-protocol
     """
-    user_message = messages[-1].content if messages else "Hello"
+    user_message = mock_user_preview(openai_messages[-1] if openai_messages else None)
 
     response_text = (
         f"I received your message: \"{user_message}\". "
@@ -85,7 +75,7 @@ def generate_mock_response(messages: list[Message]):
     yield "data: [DONE]\n\n"
 
 
-def generate_real_response(messages: list[Message]):
+def generate_real_response(openai_messages: list[dict]):
     """Stream a real response from OpenAI in AI SDK UI Message Stream SSE format."""
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
@@ -102,14 +92,13 @@ def generate_real_response(messages: list[Message]):
                     "audience, primary goal, must-cover points, approximate length or slide "
                     "count, tone, brand or format constraints). Spread questions across "
                     "several turns rather than dumping a long checklist in one message.\n\n"
-                    "Early in the conversation, remind them they can drag and drop files "
-                    "onto the message box (composer) or use the paperclip / attach button "
-                    "to add outlines, existing decks, PDFs, notes, or images if they have any.\n\n"
+                    "The user may attach files (PDFs, slide decks, images, text). Use what "
+                    "they provide: reference specific details from attachments when relevant.\n\n"
                     "Stay concise and conversational. When you have enough context, briefly "
                     "summarize what you understood and mention they can use Generate when ready."
                 ),
             },
-            *[{"role": m.role, "content": m.content} for m in messages],
+            *openai_messages,
         ],
         stream=True,
     )
@@ -143,59 +132,28 @@ def generate_real_response(messages: list[Message]):
     yield "data: [DONE]\n\n"
 
 
-def extract_text_from_message(m: dict) -> str:
-    """Extract text content from an AI SDK message.
-
-    Handles multiple formats:
-    - Format A (string): {"role": "user", "content": "hello"}
-    - Format B (content parts): {"role": "user", "content": [{"type": "text", "text": "hello"}]}
-    - Format C (parts field): {"role": "user", "parts": [{"type": "text", "text": "hello"}], "content": ""}
-    """
-    # First try the 'parts' field (AI SDK v6 / assistant-ui format)
-    parts = m.get("parts")
-    if parts and isinstance(parts, list):
-        texts = []
-        for part in parts:
-            if isinstance(part, dict) and part.get("type") == "text":
-                texts.append(part.get("text", ""))
-        if texts:
-            return " ".join(texts)
-
-    # Then try 'content'
-    content = m.get("content", "")
-
-    # content as array of part objects (Format B)
-    if isinstance(content, list):
-        texts = []
-        for part in content:
-            if isinstance(part, dict):
-                texts.append(part.get("text", ""))
-        result = " ".join(texts)
-        if result.strip():
-            return result
-
-    # content as plain string (Format A)
-    if isinstance(content, str) and content.strip():
-        return content
-
-    return str(content)
-
-
 @app.post("/api/chat")
 async def chat(request: FastAPIRequest):
     body = await request.json()
     logger.debug(f"Raw request body: {json.dumps(body, indent=2)}")
     messages_raw = body.get("messages", [])
-    messages = []
+    openai_messages: list[dict] = []
     for m in messages_raw:
-        text = extract_text_from_message(m)
-        logger.debug(f"Parsed message: role={m.get('role')}, content={text!r}")
-        messages.append(Message(role=m.get("role", "user"), content=text))
+        if not isinstance(m, dict):
+            continue
+        om = raw_message_to_openai(m)
+        preview = (
+            om["content"]
+            if isinstance(om["content"], str)
+            else f"[multimodal, {len(om['content'])} blocks]"
+        )
+        logger.debug("OpenAI message role=%s preview=%r", om.get("role"), preview)
+        openai_messages.append(om)
 
     if os.environ.get("OPENAI_API_KEY"):
-        generator = generate_real_response(messages)
+        generator = generate_real_response(openai_messages)
     else:
-        generator = generate_mock_response(messages)
+        generator = generate_mock_response(openai_messages)
 
     return StreamingResponse(
         generator,
