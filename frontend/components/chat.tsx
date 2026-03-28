@@ -32,10 +32,16 @@ export function Chat({ onMessagesChange }: ChatProps) {
       strings: {
         welcome: {
           message:
-            "What would you like to present? Describe your topic, paste notes, or upload a file — SlideForge will turn your ideas into a polished presentation.",
+            "Describe your slide deck or topic — I'll ask a few clarifying questions as we go. Drag files onto the box below or use the paperclip to attach outlines, decks, or notes.",
         },
         composer: {
-          input: { placeholder: "Describe your presentation topic…" },
+          input: {
+            placeholder:
+              "Describe your deck, paste notes, or drag files here…",
+          },
+          addAttachment: {
+            tooltip: "Attach files (or drag & drop into the composer)",
+          },
         },
       },
       welcome: {
@@ -43,12 +49,12 @@ export function Chat({ onMessagesChange }: ChatProps) {
           {
             text: "Pitch deck for a new product",
             prompt:
-              "Help me outline a pitch deck for a new consumer product. Ask clarifying questions if needed.",
+              "I need a pitch deck for a new consumer product. Walk me through clarifying questions (audience, story, proof points), and remind me I can drag in files if I have a brief or draft.",
           },
           {
             text: "Quarterly business review",
             prompt:
-              "Structure slides for a quarterly business review for my team.",
+              "I'm planning a quarterly business review for my team. Ask me focused questions to shape the deck, and mention drag-and-drop if I have spreadsheets or last quarter's slides.",
           },
         ],
       },

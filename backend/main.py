@@ -51,7 +51,10 @@ def generate_mock_response(messages: list[Message]):
 
     response_text = (
         f"I received your message: \"{user_message}\". "
-        "I'm a mock assistant — the real agent pipeline is coming soon! 🚀"
+        "I'm running in mock mode (no API key). In the real app I'd ask a few "
+        "focused questions about your audience, goal, and key points, and remind "
+        "you to drag files into the composer or use the attach button if you have "
+        "outlines or decks to share."
     )
 
     text_part_id = str(uuid.uuid4())
@@ -92,10 +95,18 @@ def generate_real_response(messages: list[Message]):
             {
                 "role": "system",
                 "content": (
-                    "You are SlideForge, an AI presentation assistant. Help users plan "
-                    "and create presentations. Be concise and helpful. When users describe "
-                    "their topic, ask clarifying questions about audience, key points, and "
-                    "desired length."
+                    "You are SlideForge, an AI presentation assistant.\n\n"
+                    "When the user describes a slide deck, topic, or presentation idea, walk "
+                    "them through clarifications in a natural back-and-forth. Each reply "
+                    "should ask only a few focused questions at a time (for example: "
+                    "audience, primary goal, must-cover points, approximate length or slide "
+                    "count, tone, brand or format constraints). Spread questions across "
+                    "several turns rather than dumping a long checklist in one message.\n\n"
+                    "Early in the conversation, remind them they can drag and drop files "
+                    "onto the message box (composer) or use the paperclip / attach button "
+                    "to add outlines, existing decks, PDFs, notes, or images if they have any.\n\n"
+                    "Stay concise and conversational. When you have enough context, briefly "
+                    "summarize what you understood and mention they can use Generate when ready."
                 ),
             },
             *[{"role": m.role, "content": m.content} for m in messages],
