@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import List
 from models.slides import Slide, SlideType
 
+logger = logging.getLogger(__name__)
+
 SLIDE_GENERATION_PROMPT = """You are SlideForge, an AI presentation generator. Given the user's content, create a compelling presentation.
 
-Generate a JSON array of 5-8 presentation slides. Each slide must follow this exact schema:
+Generate 5-8 presentation slides and return them as a JSON object with a "slides" key.
+
+Each slide in the array must follow this exact schema:
 {
   "id": "slide_001",
-  "type": "title | concept | comparison | timeline | evidence | conclusion",
+  "type": "title",
   "title": "Slide Title",
   "body": ["Bullet 1", "Bullet 2"],
   "media": [],
@@ -20,21 +25,24 @@ Generate a JSON array of 5-8 presentation slides. Each slide must follow this ex
   "trigger_words": ["keyword1", "keyword2"]
 }
 
+Valid values for "type": "title", "concept", "comparison", "timeline", "evidence", "conclusion"
+
 Rules:
-- First slide MUST be type "title"
-- Last slide MUST be type "conclusion"
-- Use a mix of types: concept, comparison, timeline, evidence
+- First slide MUST have type "title"
+- Last slide MUST have type "conclusion"
+- Use a mix of types for middle slides
 - Each slide should have 2-4 body bullets
 - Speaker notes should be concise guidance for the presenter
 - Trigger words should be 2-3 keywords relevant to the slide content
 - Make the content engaging, clear, and professional
 - If the user's input is vague, create a general but impressive presentation about the topic
 
-Return ONLY a valid JSON array. No markdown fences, no explanation, just the JSON array."""
+Return ONLY valid JSON: {"slides": [...]}
+"""
 
 
 async def generate_slides_with_llm(content: str) -> List[dict]:
-    """Generate slides using a direct OpenAI call (simpler than nested Railtracks agents for hackathon)."""
+    """Generate slides using a direct OpenAI call."""
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -49,18 +57,44 @@ async def generate_slides_with_llm(content: str) -> List[dict]:
         response_format={"type": "json_object"},
     )
 
-    result_text = response.choices[0].message.content or "[]"
+    result_text = response.choices[0].message.content or "{}"
+    logger.info(f"LLM raw response (first 500 chars): {result_text[:500]}")
 
     # Parse the JSON
     parsed = json.loads(result_text)
+    logger.info(f"Parsed JSON type: {type(parsed).__name__}, keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'N/A'}")
 
-    # Handle both {"slides": [...]} and [...] formats
-    if isinstance(parsed, dict) and "slides" in parsed:
-        slides_data = parsed["slides"]
+    # Extract slides array from various possible wrapper keys
+    if isinstance(parsed, dict):
+        # Try common key names
+        slides_data = None
+        for key in ["slides", "presentation", "data", "results"]:
+            if key in parsed:
+                slides_data = parsed[key]
+                break
+        if slides_data is None:
+            # If dict has a single key with a list value, use that
+            for key, value in parsed.items():
+                if isinstance(value, list):
+                    slides_data = value
+                    break
+            else:
+                slides_data = []
     elif isinstance(parsed, list):
         slides_data = parsed
     else:
         slides_data = []
 
-    # Validate through Pydantic
-    return [Slide(**s).model_dump() for s in slides_data]
+    logger.info(f"Found {len(slides_data)} raw slides")
+
+    # Validate through Pydantic, skip invalid slides rather than failing all
+    validated = []
+    for i, s in enumerate(slides_data):
+        try:
+            slide = Slide(**s)
+            validated.append(slide.model_dump())
+        except Exception as e:
+            logger.warning(f"Slide {i} validation failed: {e} — raw: {s}")
+
+    logger.info(f"Validated {len(validated)} slides out of {len(slides_data)}")
+    return validated

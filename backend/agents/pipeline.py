@@ -115,7 +115,10 @@ async def run_pipeline(content: str) -> List[dict]:
         slides = await generate_slides_with_llm(content)
     except Exception as e:
         logging.getLogger(__name__).error(f"LLM slide generation failed: {e}")
-        # Fallback to mock slides
+        slides = []
+
+    if not slides:
+        logging.getLogger(__name__).warning("LLM returned 0 slides, falling back to mock")
         slides = [Slide(**s).model_dump() for s in MOCK_SLIDES]
 
     return slides
